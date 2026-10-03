@@ -45,4 +45,6 @@ docker compose up --build
 - API: http://localhost:8000/health
 - Web: http://localhost:3000
 
+Authenticated routes require a Clerk session token. Leave Clerk unset locally and those routes return 401. `APP_ENV=production` requires `CLERK_ISSUER` and `CLERK_SECRET_KEY`. See `docs/architecture.md`.
+
 Do not commit `.env`.

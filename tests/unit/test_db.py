@@ -3,7 +3,6 @@ from sqlalchemy import text
 
 from pulse_api.db import (
     READINESS_CONNECT_TIMEOUT_SECONDS,
-    Base,
     build_session_factory,
     check_database,
     create_db_engine,
@@ -19,7 +18,6 @@ def test_session_scope_executes_within_a_transaction() -> None:
         value = session.execute(text("SELECT 1")).scalar_one()
 
     assert value == 1
-    assert Base.metadata.tables == {}
     engine.dispose()
 
 

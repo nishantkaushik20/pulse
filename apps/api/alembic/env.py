@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from pulse_api.config import get_settings
-from pulse_api.db import Base
+from pulse_api.models import Base
 
 config = context.config
 

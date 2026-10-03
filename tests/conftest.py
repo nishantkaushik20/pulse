@@ -2,6 +2,8 @@ import pytest
 
 from pulse_api.config import get_settings
 
+pytest_plugins = ["tests.domain_app"]
+
 
 @pytest.fixture(autouse=True)
 def foundation_env(monkeypatch: pytest.MonkeyPatch) -> None:

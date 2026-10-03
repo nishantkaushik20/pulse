@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
 class Base(DeclarativeBase):
-    """Declarative base for future tenant-owned models."""
+    """Declarative base for Pulse persistence models."""
 
 
 # Same budget as the Redis readiness socket timeout.
@@ -24,6 +24,18 @@ def create_db_engine(database_url: str, *, connect_timeout: int | None = None) -
         pool_pre_ping=True,
         connect_args={"connect_timeout": connect_timeout},
     )
+
+
+_engine: Engine | None = None
+
+
+def get_app_engine() -> Engine:
+    global _engine
+    if _engine is None:
+        from pulse_api.config import get_settings
+
+        _engine = create_db_engine(get_settings().database_url)
+    return _engine
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
