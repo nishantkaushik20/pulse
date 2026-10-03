@@ -6,6 +6,7 @@ Migrations:
 
 - `0001_baseline` is empty.
 - `0002_domain` creates the identity and tenant-owned tables below.
+- `0003_gmail` creates `gmail_connections`, `message_threads`, and `messages`.
 
 Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The ORM also assigns UUIDs on the client so tests can use SQLite.
 
@@ -53,8 +54,37 @@ Foreign keys use `ON DELETE RESTRICT`.
 - `tenant_users.user_id`, `actions.requested_by`, and `action_approvals.approved_by` reference `users`.
 - `contacts.customer_id` references `customers`. The service rejects customer deletion while contacts exist.
 - `action_approvals.action_id` references `actions`.
+- `gmail_connections.connected_by` references `users`.
+- `messages.thread_id` references `message_threads`.
 
-Deleting a tenant, user, customer, or action that is still referenced fails in the database. Cascades are not used. Polymorphic `entity_id` values are intentionally not foreign keys, so they do not delete or restrict anything. Readers must filter those rows by `tenant_id`.
+Deleting a tenant, user, customer, action, Gmail connection, or message thread that is still referenced fails in the database. Cascades are not used. Disconnecting Gmail clears credential columns and keeps the connection row and ingested messages. Polymorphic `entity_id` values are intentionally not foreign keys, so they do not delete or restrict anything. Readers must filter those rows by `tenant_id`.
+
+## Gmail
+
+`gmail_connections` is tenant-owned.
+
+| Column | Notes |
+| --- | --- |
+| id | UUID primary key |
+| tenant_id | required, `ON DELETE RESTRICT` |
+| connected_by | user who completed OAuth |
+| external_account_id | mailbox address from `users.getProfile`, stored lowercase |
+| status | `ACTIVE`, `REVOKED`, or `ERROR` |
+| encrypted_refresh_token, encrypted_access_token | AES-256-GCM payload (`nonce \|\| ciphertext/tag`), nullable |
+| access_token_expires_at | |
+| encryption_key_version | |
+| history_id | stored for a later incremental sync; not used by Phase 3 |
+| last_synced_at, last_error_code | |
+| scopes | granted scope string |
+| created_at, updated_at | |
+
+Unique `(tenant_id, external_account_id)` and unique `external_account_id`. A mailbox connected to another tenant is a generic conflict. The response does not include the other tenant. Reconnecting the same mailbox in the same tenant updates the row. Plaintext OAuth tokens are not columns.
+
+`message_threads`: `tenant_id`, `source` (`gmail`), `external_thread_id`, `subject`, timestamps. Unique `(tenant_id, source, external_thread_id)`.
+
+`messages`: `tenant_id`, `thread_id`, `source` (`gmail`), `external_message_id`, `from_email`, `from_name`, `to_addresses`, `cc_addresses`, `subject`, `snippet`, `body_text`, `received_at`, `created_at`. Unique `(tenant_id, source, external_message_id)`. Address lists are JSONB. `body_text` is plain text capped at 32,768 characters. There is no HTML body and no attachment table.
+
+Ingestion inserts with `ON CONFLICT DO NOTHING` on that message key. The `EMAIL_RECEIVED` event is written in the same transaction only when the insert stores a new row. `event.data` contains `provider`, `external_message_id`, and `external_thread_id`.
 
 ## Multi-tenancy
 

@@ -43,6 +43,7 @@ _SENSITIVE_PARTS = (
     "secret",
     "token",
     "api_key",
+    "encryption_key",
 )
 
 _BEARER = re.compile(r"Bearer\s+\S+", re.IGNORECASE)

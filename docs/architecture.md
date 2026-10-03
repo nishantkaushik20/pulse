@@ -13,7 +13,9 @@ Pulse is a multi-tenant SaaS platform. This document records the identity and do
 
 Docker Compose runs PostgreSQL, Redis, the API, and the web app. Copy `.env.example` to `.env` for host-side configuration. Compose overrides database and Redis hosts so the API container uses the service names.
 
-Clerk is optional outside production. Set `CLERK_ISSUER` and `CLERK_SECRET_KEY` when authenticated routes should accept real Clerk session tokens. `APP_ENV=production` refuses to start without both.
+Clerk is optional outside production. Set `CLERK_ISSUER` and `CLERK_SECRET_KEY` when authenticated routes should accept real Clerk session tokens. `APP_ENV=production` refuses to start without both, and without `INTEGRATION_ENCRYPTION_KEY`.
+
+Gmail OAuth client id, client secret, and redirect URI are not startup requirements. When any of them or the encryption key is missing, Gmail routes return 503. `/health` and `/ready` stay available.
 
 ## HTTP
 
@@ -88,12 +90,36 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - Business events: `GET/POST /business-events`, `GET /business-events/{id}`.
 - Actions: `GET/POST /actions`, `GET /actions/{id}`.
 - Approvals: `GET/POST /actions/{id}/approvals`, `GET /actions/{id}/approvals/{approval_id}`.
+- Gmail: `POST /integrations/gmail/connect`, `GET /integrations/gmail/callback`, `GET /integrations/gmail/connections`, `POST /integrations/gmail/connections/{id}/disconnect`, `POST /integrations/gmail/connections/{id}/sync`.
+- Ingested mail: `GET /messages`, `GET /messages/{id}`, `GET /message-threads`, `GET /message-threads/{id}`.
 
 Created actions are `PENDING`. Created attention items are `OPEN`. Approval does not execute the action.
 
+`OWNER` can connect and disconnect Gmail. `MEMBER` can read ingested mail and trigger a manual sync. There are no finer Gmail permissions.
+
+## Gmail ingestion
+
+Phase 3 connects one Gmail mailbox and manually ingests a bounded inbox page. The web app does not implement a Gmail screen. The callback redirects to `WEB_APP_URL` with `?gmail=connected` or `?gmail=error&reason=`.
+
+1. An authenticated `OWNER` calls `POST /integrations/gmail/connect`.
+2. Pulse resolves `TenantContext`, generates an opaque `state` and a PKCE verifier, and stores `oauth_state:{state}` in Redis for 10 minutes. The value is `user_id`, `tenant_id`, and `pkce_verifier`. It is not a token.
+3. The response is Google's authorization URL. The only scope is `https://www.googleapis.com/auth/gmail.readonly`.
+4. Google redirects the browser to `GET /integrations/gmail/callback`. That route does not use Clerk. It consumes the Redis state once, exchanges the code with the stored PKCE verifier and the configured client secret, and loads `users.getProfile`.
+5. The mailbox is stored on `gmail_connections` for the tenant recorded in Redis. Tokens are encrypted. The browser is redirected to the web app without `code` or `state`.
+
+The OAuth `state` is a short-lived bearer secret. The callback ignores any tenant or user id in the query string. Possession of `state` completes the original user's connection. It cannot be retargeted at another tenant. A missing, expired, or reused state is rejected.
+
+Manual sync lists at most 50 inbox messages from the last 7 days (`in:inbox newer_than:7d -in:sent`) and skips anything labeled `SENT` or missing `INBOX`. Each new message is one `messages` row and one `EMAIL_RECEIVED` business event in the same transaction. The idempotency key is `(tenant_id, source, external_message_id)`.
+
+`history_id` is stored for a later phase. This phase does not call `history.list` and does not run a polling loop, watch, or worker.
+
+Gmail HTTP lives behind `GmailClient`. Routes do not receive access or refresh tokens. Tests use a fake client. No test calls Google.
+
+Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML.
+
 ## Intentionally not implemented
 
-Gmail, WhatsApp, AI, LLM calls, agents, RAG, vector search, background workers, business integrations, invoices, payments, CRM pipelines, dashboards, attention ranking, and action execution are out of scope. The web app does not call these APIs yet.
+WhatsApp, AI, LLM calls, agents, attention ranking, automatic replies, Gmail sending, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope. The web app does not call these APIs yet.
 
 ## Constraints
 
