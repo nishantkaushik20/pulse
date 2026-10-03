@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["apps/api/src"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["apps/api/src", "apps/api/alembic", "tests"]
+extend-exclude = ["apps/api/alembic/script.py.mako"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["pulse_api"]
+mypy_path = "apps/api/src"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true

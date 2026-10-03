@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulse-api"
+version = "0.1.0"
+description = "Pulse API foundation"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14",
+  "fastapi>=0.115",
+  "pydantic>=2.10",
+  "pydantic-settings>=2.6",
+  "psycopg[binary]>=3.2",
+  "redis>=5.2",
+  "sqlalchemy>=2.0",
+  "uvicorn>=0.32",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx2>=2.0",
+  "mypy>=1.15",
+  "pytest>=8.3",
+  "ruff>=0.11",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

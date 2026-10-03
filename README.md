@@ -1,35 +1,48 @@
 # Pulse
 
-Monorepo layout:
+Multi-tenant SaaS foundation for SMB business operations.
 
 ```
-pulse/
-├── apps/
-│   ├── api/
-│   └── web/
-├── packages/
-│   ├── domain/
-│   ├── ai/
-│   └── integrations/
-├── workers/
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── security/
-│   └── e2e/
-├── docs/
-│   ├── product.md
-│   ├── architecture.md
-│   ├── database.md
-│   ├── security.md
-│   ├── ai.md
-│   ├── actions.md
-│   └── integrations/
-├── infra/
-├── AGENTS.md
-├── README.md
-├── docker-compose.yml
-└── .env.example
+apps/api     FastAPI, SQLAlchemy 2, Alembic, Pydantic
+apps/web     Next.js, TypeScript
+packages/    reserved
+workers/     reserved
+tests/       unit, integration, security, e2e
 ```
 
-Read `docs/` and `AGENTS.md` before implementing. Copy `.env.example` to `.env` for local configuration. Do not commit `.env`.
+Read `docs/` and `AGENTS.md` before implementing.
+
+## Local API
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e "apps/api[dev]"
+cp .env.example .env
+pytest
+ruff check
+mypy
+uvicorn pulse_api.main:app --reload --app-dir apps/api/src
+```
+
+## Local web
+
+```bash
+cd apps/web
+npm ci
+npm test
+npm run lint
+npm run typecheck
+npm run dev
+```
+
+## Docker Compose
+
+```bash
+docker compose up --build
+```
+
+- API: http://localhost:8000/health
+- Web: http://localhost:3000
+
+Do not commit `.env`.
