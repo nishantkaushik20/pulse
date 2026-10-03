@@ -27,10 +27,14 @@ Authenticated routes are listed under API. They return 401 when the caller has n
 Pulse does not implement passwords. Clerk verifies the session. Pulse stores the internal user and decides authorization.
 
 1. The client sends `Authorization: Bearer <Clerk session JWT>`.
-2. The API verifies the JWT with Clerk's JWKS (`CLERK_JWKS_URL`, or `{CLERK_ISSUER}/.well-known/jwks.json`) using RS256. The `iss`, `exp`, and `sub` claims are required. `sub` is the Clerk user id.
+2. The API verifies the JWT with Clerk's JWKS (`CLERK_JWKS_URL`, or `{CLERK_ISSUER}/.well-known/jwks.json`). The signing key is the JWKS key whose `kid` matches the token header. The algorithm must be RS256. `iss` must equal `CLERK_ISSUER`. `exp` is required and must be in the future. `sub` is required and must be a non-empty string. `nbf` and `iat` are checked when the token includes them.
 3. Email and name are taken from the token when present. If email is missing, the API loads the Clerk user with `CLERK_SECRET_KEY` and does not log that response.
 4. Pulse inserts an internal `users` row on first sight of that Clerk id.
-5. The current tenant is the user's earliest `tenant_users` membership.
+5. `resolve_current_tenant` builds the `TenantContext` for that user.
+
+Trusted for authentication: the RS256 signature, `iss`, `exp`, and `sub`. `nbf` and `iat` are time checks when present.
+
+Not trusted for authorization: `aud`, `azp`, `org_id`, `org_role`, `sid`, email, and name. Pulse has no configured audience and no authorized-party list. Default Clerk session tokens do not require `aud`. A present `aud` or `azp` does not select a tenant or a role. Email and name are profile fields only. Role and tenant come from `tenant_users`.
 
 There is no `AUTH_DISABLED` switch and no second authenticator in the application. Tests replace the `get_identity` dependency in the test process only. Unset Clerk configuration makes authenticated routes return 401. `/health` stays available.
 
@@ -38,9 +42,13 @@ The API does not log bearer tokens, authorization headers, Clerk payloads, or cu
 
 ## Tenant resolution
 
-Tenant id is never read from a body field, query parameter, or header.
+Phase 2 supports one implicit current tenant. `resolve_current_tenant` is the only membership-resolution rule. It returns a `TenantContext` for the earliest membership by `created_at`, then `id`. Services and repositories consume that `TenantContext`. They do not repeat the ordering rule.
 
-`POST /tenants` creates a tenant only when the caller has no membership, and the caller becomes `OWNER`. A later request resolves that membership. A user who already belongs to a tenant receives 409 from `POST /tenants`. Switching among multiple memberships is not implemented. The active tenant is the earliest membership by `created_at`, then `id`.
+Tenant identity must never come from arbitrary client input. It is not read from a body field, query parameter, or header.
+
+`POST /tenants` creates a tenant only when the caller has no membership, and the caller becomes `OWNER`. A later request resolves that membership. A user who already belongs to a tenant receives 409 from `POST /tenants`.
+
+Future tenant switching must verify membership before changing `TenantContext`. This phase does not implement switching or a tenant selector.
 
 ## Authorization
 

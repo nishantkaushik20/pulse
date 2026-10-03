@@ -10,11 +10,19 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from tests.domain_app import DomainApp
 
+from pulse_api.context import TenantContext
 from pulse_api.db import session_scope
 from pulse_api.deps import get_identity, get_session
+from pulse_api.errors import NotFoundError
 from pulse_api.main import create_app
-from pulse_api.models import Customer, Tenant, TenantUser, User
+from pulse_api.models import Customer, Tenant, TenantRole, TenantUser, User
 from pulse_api.repositories import CustomerRepository
+from pulse_api.services import (
+    ActionService,
+    AttentionService,
+    BusinessEventService,
+    CustomerService,
+)
 
 
 def test_source_has_no_auth_disabled_switch() -> None:
@@ -131,12 +139,25 @@ def test_tenant_a_cannot_read_tenant_b_records_by_known_id(
     assert listed.status_code == 200
     assert listed.json()["items"] == []
 
+    intruder_tenant = TenantContext(
+        user_id=UUID(intruder["user_id"]),
+        tenant_id=UUID(intruder["tenant_id"]),
+        role=TenantRole.MEMBER,
+    )
     with session_scope(domain.factory) as session:
-        visible = CustomerRepository(session, UUID(intruder["tenant_id"])).get(UUID(customer_id))
+        visible = CustomerRepository(session, intruder_tenant.tenant_id).get(UUID(customer_id))
         stored = session.scalar(select(Customer).where(Customer.id == UUID(customer_id)))
-    assert visible is None
-    assert stored is not None
-    assert stored.tenant_id == UUID(owner["tenant_id"])
+        assert visible is None
+        assert stored is not None
+        assert stored.tenant_id == UUID(owner["tenant_id"])
+        with pytest.raises(NotFoundError):
+            CustomerService(session, intruder_tenant).get(UUID(customer_id))
+        with pytest.raises(NotFoundError):
+            AttentionService(session, intruder_tenant).get(UUID(attention_id))
+        with pytest.raises(NotFoundError):
+            BusinessEventService(session, intruder_tenant).get(UUID(event_id))
+        with pytest.raises(NotFoundError):
+            ActionService(session, intruder_tenant).get(UUID(action_id))
 
 
 def test_repository_overwrites_client_tenant_id(domain: DomainApp) -> None:

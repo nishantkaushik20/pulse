@@ -306,16 +306,6 @@ def get_user(session: Session, user_id: UUID) -> User | None:
     return session.get(User, user_id)
 
 
-def earliest_membership(session: Session, user_id: UUID) -> TenantUser | None:
-    statement = (
-        select(TenantUser)
-        .where(TenantUser.user_id == user_id)
-        .order_by(TenantUser.created_at.asc(), TenantUser.id.asc())
-        .limit(1)
-    )
-    return session.scalar(statement)
-
-
 def list_memberships(session: Session, tenant_id: UUID) -> Sequence[TenantUser]:
     statement = (
         select(TenantUser)

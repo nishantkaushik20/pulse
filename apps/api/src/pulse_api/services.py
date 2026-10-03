@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pulse_api.auth import ClerkIdentity
-from pulse_api.context import RequestContext, TenantContext
+from pulse_api.context import RequestContext, TenantContext, resolve_current_tenant
 from pulse_api.errors import ConflictError, NotFoundError
 from pulse_api.models import (
     Action,
@@ -32,7 +32,6 @@ from pulse_api.repositories import (
     BusinessEventRepository,
     ContactRepository,
     CustomerRepository,
-    earliest_membership,
     get_tenant,
     get_user,
     get_user_by_clerk_id,
@@ -69,20 +68,12 @@ def ensure_user(session: Session, identity: ClerkIdentity, lookup: ProfileLookup
 
 
 def build_request_context(session: Session, user: User) -> RequestContext:
-    membership = earliest_membership(session, user.id)
-    tenant_context = None
-    if membership is not None:
-        tenant_context = TenantContext(
-            user_id=user.id,
-            tenant_id=membership.tenant_id,
-            role=TenantRole(membership.role),
-        )
     return RequestContext(
         user_id=user.id,
         clerk_user_id=user.clerk_user_id,
         email=user.email,
         name=user.name,
-        tenant=tenant_context,
+        tenant=resolve_current_tenant(session, user.id),
     )
 
 

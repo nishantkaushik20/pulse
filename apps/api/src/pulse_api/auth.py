@@ -25,7 +25,17 @@ class ClerkIdentity:
 
 
 class ClerkAuthenticator:
-    """Verify a Clerk session JWT. There is no alternate acceptance path."""
+    """Verify a Clerk session JWT. There is no alternate acceptance path.
+
+    Trusted for authentication: RS256 signature from the configured issuer's
+    JWKS (key selected by the token ``kid``), ``iss``, ``exp``, and a
+    non-empty string ``sub``. ``nbf`` and ``iat`` are checked when present.
+
+    Pulse has no configured audience and no authorized-party list. Default
+    Clerk session tokens do not require ``aud``. ``aud`` and ``azp`` are
+    ignored. They are not trusted for authorization. Email and name are
+    profile hints only.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._issuer = settings.clerk_issuer
@@ -43,7 +53,13 @@ class ClerkAuthenticator:
                 key,
                 algorithms=["RS256"],
                 issuer=self._issuer,
-                options={"require": ["exp", "sub", "iss"]},
+                options={
+                    "require": ["exp", "sub", "iss"],
+                    "verify_aud": False,
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_iss": True,
+                },
             )
         except jwt.PyJWTError:
             logger.warning("clerk token verification failed")

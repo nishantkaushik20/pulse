@@ -9,6 +9,8 @@ from urllib.error import HTTPError
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt import PyJWKClient
+from jwt.algorithms import RSAAlgorithm
 
 from pulse_api.auth import ClerkAuthenticator, fetch_clerk_profile
 from pulse_api.config import Settings
@@ -57,6 +59,68 @@ def test_wrong_issuer_expired_and_bad_algorithm_are_rejected(
     assert "super-secret" not in caplog.text
     for token in cases:
         assert token not in caplog.text
+
+
+def test_jwks_selects_the_key_id_and_rejects_an_unknown_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    second = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    _install_jwks(monkeypatch, {"key-a": first, "key-b": second})
+    authenticator = ClerkAuthenticator(_settings())
+
+    selected = _token(second, headers={"kid": "key-b"})
+    assert authenticator.authenticate(f"Bearer {selected}").clerk_user_id == "user_123"
+
+    mismatched = _token(first, headers={"kid": "key-b"})
+    unknown = _token(second, headers={"kid": "missing"})
+    for token in (mismatched, unknown):
+        with pytest.raises(UnauthorizedError, match="invalid token"):
+            authenticator.authenticate(f"Bearer {token}")
+
+
+def test_malformed_and_subject_tokens_are_rejected(
+    private_key: rsa.RSAPrivateKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_jwks(monkeypatch, private_key)
+    authenticator = ClerkAuthenticator(_settings())
+    rejected = [
+        "not-a-jwt",
+        "a.b.c",
+        _token(private_key, {"sub": "   "}),
+        _token(private_key, {"sub": 42}),
+        jwt.encode(
+            {"iss": _ISSUER, "exp": _exp(timedelta(minutes=5))},
+            private_key,
+            algorithm="RS256",
+        ),
+        _token(private_key, expires_in=timedelta(minutes=5), nbf_in=timedelta(minutes=5)),
+        _token(private_key, algorithm="RS384"),
+    ]
+    for token in rejected:
+        with pytest.raises(UnauthorizedError, match="invalid token"):
+            authenticator.authenticate(f"Bearer {token}")
+
+
+def test_audience_and_authorized_party_are_not_authorization(
+    private_key: rsa.RSAPrivateKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_jwks(monkeypatch, private_key)
+    token = _token(
+        private_key,
+        {
+            "aud": "https://some-other-api.example",
+            "azp": "https://evil.example",
+            "org_role": "admin",
+            "email": "Ada@Example.com",
+        },
+    )
+    identity = ClerkAuthenticator(_settings()).authenticate(f"Bearer {token}")
+    assert identity.clerk_user_id == "user_123"
+    assert identity.email == "Ada@Example.com"
+    assert not hasattr(identity, "role")
 
 
 def test_missing_configuration_and_header_are_rejected() -> None:
@@ -152,16 +216,43 @@ def _stub_jwks(monkeypatch: pytest.MonkeyPatch, private_key: rsa.RSAPrivateKey) 
     monkeypatch.setattr("pulse_api.auth._jwks_client", lambda _url: _Client())
 
 
+def _install_jwks(
+    monkeypatch: pytest.MonkeyPatch,
+    keys: dict[str, rsa.RSAPrivateKey],
+) -> None:
+    document = {"keys": [_public_jwk(key, kid) for kid, key in keys.items()]}
+
+    def factory(url: str) -> PyJWKClient:
+        client = PyJWKClient(url)
+        client.fetch_data = lambda: document  # type: ignore[method-assign]
+        return client
+
+    monkeypatch.setattr("pulse_api.auth._jwks_client", factory)
+
+
+def _public_jwk(private_key: rsa.RSAPrivateKey, kid: str) -> dict[str, object]:
+    jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
+    jwk["kid"] = kid
+    jwk["use"] = "sig"
+    jwk["alg"] = "RS256"
+    return jwk
+
+
 def _token(
     private_key: rsa.RSAPrivateKey,
-    extra: dict[str, str] | None = None,
+    extra: dict[str, object] | None = None,
     *,
     issuer: str = _ISSUER,
     expires_in: timedelta = timedelta(minutes=5),
+    nbf_in: timedelta | None = None,
+    headers: dict[str, str] | None = None,
+    algorithm: str = "RS256",
 ) -> str:
     claims: dict[str, object] = {"sub": "user_123", "iss": issuer, "exp": _exp(expires_in)}
+    if nbf_in is not None:
+        claims["nbf"] = _exp(nbf_in)
     claims.update(extra or {})
-    return jwt.encode(claims, private_key, algorithm="RS256")
+    return jwt.encode(claims, private_key, algorithm=algorithm, headers=headers)
 
 
 def _exp(delta: timedelta) -> int:
