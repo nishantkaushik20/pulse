@@ -23,6 +23,10 @@ class InvalidGrant(Exception):
     """Refresh or exchange was rejected. The Google body is not retained."""
 
 
+class GmailUnauthorized(Exception):
+    """Gmail API rejected the access token. The response body is not retained."""
+
+
 class GmailUnavailable(Exception):
     """Gmail or Google returned a retryable failure."""
 
@@ -136,7 +140,7 @@ class UrllibGmailClient:
             method=method,
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        return _json_object(_open(request))
+        return _json_object(_open(request, gmail_api=True))
 
 
 def authorization_url(
@@ -162,7 +166,7 @@ def authorization_url(
     return f"{_AUTH_URL}?{query}"
 
 
-def _open(request: Request) -> bytes:
+def _open(request: Request, *, gmail_api: bool = False) -> bytes:
     try:
         with urlopen(request, timeout=_TIMEOUT) as response:
             data = response.read()
@@ -171,6 +175,8 @@ def _open(request: Request) -> bytes:
         status = exc.code
         if code == "invalid_grant":
             raise InvalidGrant from None
+        if gmail_api and status == 401:
+            raise GmailUnauthorized from None
         if status == 429 or status >= 500:
             raise GmailUnavailable from None
         raise GmailUnavailable from None

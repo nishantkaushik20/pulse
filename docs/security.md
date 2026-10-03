@@ -20,6 +20,6 @@ The authorization URL requests only `https://www.googleapis.com/auth/gmail.reado
 
 Refresh tokens and access tokens are encrypted with AES-256-GCM under `INTEGRATION_ENCRYPTION_KEY` before they are written to PostgreSQL. The key is 32 bytes, base64-encoded. Production refuses to start when it is missing. Local Gmail routes return 503 when it is missing. The key, tokens, authorization codes, and the Google client secret are not logged.
 
-`invalid_grant` marks the connection `REVOKED`, clears the ciphertext, and returns a stable error. It is not retried. HTTP 429 and 5xx return 503 and do not advance `last_synced_at`. Disconnect revokes the refresh token on a best-effort basis, clears ciphertext, and keeps ingested messages.
+`invalid_grant` marks the connection `REVOKED`, clears the ciphertext, and returns a stable error. It is not retried. A Gmail API 401 does not revoke the connection. Pulse refreshes the access token once and retries that Gmail request once. A second 401 returns 503 and leaves the credentials in place. HTTP 429 and 5xx return 503 and do not advance `last_synced_at`. Disconnect revokes the refresh token on a best-effort basis, clears ciphertext, and keeps ingested messages.
 
 A mailbox address is globally unique. When another tenant already connected it, the callback redirects with `reason=conflict` and does not reveal that tenant.

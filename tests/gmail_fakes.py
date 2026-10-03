@@ -5,6 +5,7 @@ from typing import Any
 from pulse_api.gmail.client import (
     GMAIL_READONLY_SCOPE,
     GmailProfile,
+    GmailUnauthorized,
     GmailUnavailable,
     InvalidGrant,
     OAuthTokens,
@@ -24,6 +25,9 @@ class FakeGmailClient:
         self.refresh_unavailable = False
         self.fail_revoke = False
         self.unavailable_on_get: set[str] = set()
+        self.unauthorized_list = 0
+        self.unauthorized_get: set[str] = set()
+        self.unauthorized_profile = 0
         self.exchanged: list[tuple[str, str, str]] = []
         self.refresh_calls = 0
         self.list_calls = 0
@@ -65,6 +69,9 @@ class FakeGmailClient:
 
     def get_profile(self, access_token: str) -> GmailProfile:
         self.profile_access = access_token
+        if self.unauthorized_profile > 0:
+            self.unauthorized_profile -= 1
+            raise GmailUnauthorized
         return self.profile
 
     def list_message_ids(self, access_token: str, *, query: str, limit: int) -> list[str]:
@@ -72,10 +79,16 @@ class FakeGmailClient:
         self.last_query = query
         self.last_limit = limit
         self.listed_access.append(access_token)
+        if self.unauthorized_list > 0:
+            self.unauthorized_list -= 1
+            raise GmailUnauthorized
         return list(self.list_ids)[:limit]
 
     def get_message(self, access_token: str, message_id: str) -> dict[str, Any]:
         self.get_calls.append(message_id)
+        if message_id in self.unauthorized_get:
+            self.unauthorized_get.remove(message_id)
+            raise GmailUnauthorized
         if message_id in self.unavailable_on_get:
             raise GmailUnavailable
         return self.messages[message_id]

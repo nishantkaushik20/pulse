@@ -10,6 +10,7 @@ import pytest
 from pulse_api.config import Settings
 from pulse_api.gmail.client import (
     GMAIL_READONLY_SCOPE,
+    GmailUnauthorized,
     GmailUnavailable,
     InvalidGrant,
     UrllibGmailClient,
@@ -99,6 +100,51 @@ def test_invalid_grant_does_not_expose_google_body(monkeypatch: pytest.MonkeyPat
         UrllibGmailClient(_settings()).refresh_access_token("refresh-token-PLAINTEXT-MARKER")
 
     assert "SUPER-GOOGLE-BODY" not in str(exc.value)
+    assert "refresh-token-PLAINTEXT-MARKER" not in str(exc.value)
+
+
+def test_gmail_api_401_hides_body_and_does_not_revoke_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(request: object, timeout: int = 10) -> _Response:
+        raise HTTPError(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+            401,
+            "Unauthorized",
+            Message(),
+            io.BytesIO(b'{"error":{"message":"BODY-SECRET-401"}}'),
+        )
+
+    monkeypatch.setattr("pulse_api.gmail.client.urlopen", boom)
+
+    with pytest.raises(GmailUnauthorized) as exc:
+        UrllibGmailClient(_settings()).list_message_ids(
+            "access-token-value",
+            query="in:inbox",
+            limit=50,
+        )
+
+    assert "BODY-SECRET-401" not in str(exc.value)
+    assert "access-token-value" not in str(exc.value)
+
+
+def test_token_endpoint_401_stays_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(request: object, timeout: int = 10) -> _Response:
+        raise HTTPError(
+            "https://oauth2.googleapis.com/token",
+            401,
+            "Unauthorized",
+            Message(),
+            io.BytesIO(b'{"error":"unauthorized_client","secret":"TOKEN-BODY"}'),
+        )
+
+    monkeypatch.setattr("pulse_api.gmail.client.urlopen", boom)
+
+    with pytest.raises(GmailUnavailable) as exc:
+        UrllibGmailClient(_settings()).refresh_access_token("refresh-token-PLAINTEXT-MARKER")
+
+    assert not isinstance(exc.value, GmailUnauthorized)
+    assert "TOKEN-BODY" not in str(exc.value)
     assert "refresh-token-PLAINTEXT-MARKER" not in str(exc.value)
 
 

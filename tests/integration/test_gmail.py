@@ -129,6 +129,7 @@ def test_connect_stores_state_and_uses_pkce(gmail: GmailApp) -> None:
     assert gmail.fake.exchanged[0][1] == stored["pkce_verifier"]
     logged = "\n".join(handler.lines)  # type: ignore[attr-defined]
     assert AUTH_CODE not in logged
+    assert state not in logged
     assert PLAINTEXT_ACCESS not in logged
     assert PLAINTEXT_REFRESH not in logged
     assert stored["pkce_verifier"] not in logged
@@ -514,3 +515,73 @@ def test_missing_encryption_key_returns_503(
     assert response.status_code == 503
     assert response.json()["detail"] == "gmail is not configured"
     assert AUTH_CODE not in response.text
+
+
+def _connected(gmail: GmailApp) -> str:
+    _bootstrap(gmail, "user_a", "a@example.com", "Ada", "Tenant A")
+    assert _callback(gmail, _connect(gmail)[0]).status_code == 302
+    connection_id = gmail.domain.client.get("/integrations/gmail/connections").json()["items"][0][
+        "id"
+    ]
+    return str(connection_id)
+
+
+def test_gmail_401_refreshes_once_and_retries_the_request(gmail: GmailApp) -> None:
+    connection_id = _connected(gmail)
+    gmail.fake.unauthorized_list = 1
+    gmail.fake.list_ids = ["msg-inbox"]
+    gmail.fake.messages = {"msg-inbox": _inbox("msg-inbox", plain="kept-after-refresh")}
+
+    synced = gmail.domain.client.post(f"/integrations/gmail/connections/{connection_id}/sync")
+
+    assert synced.status_code == 200, synced.text
+    assert synced.json()["ingested"] == 1
+    assert gmail.fake.refresh_calls == 1
+    assert gmail.fake.list_calls == 2
+    assert gmail.fake.listed_access == [PLAINTEXT_ACCESS, "refreshed-access-token"]
+    with session_scope(gmail.domain.factory) as session:
+        row = session.scalar(select(GmailConnection))
+        assert row is not None
+        assert row.status == "ACTIVE"
+        assert row.encrypted_refresh_token is not None
+        assert row.encrypted_access_token is not None
+
+
+def test_repeated_gmail_401_does_not_revoke(gmail: GmailApp) -> None:
+    connection_id = _connected(gmail)
+    gmail.fake.unauthorized_list = 5
+
+    failed = gmail.domain.client.post(f"/integrations/gmail/connections/{connection_id}/sync")
+
+    assert failed.status_code == 503
+    assert failed.json()["detail"] == "gmail is unavailable"
+    assert gmail.fake.refresh_calls == 1
+    assert gmail.fake.list_calls == 2
+    with session_scope(gmail.domain.factory) as session:
+        row = session.scalar(select(GmailConnection))
+        assert row is not None
+        assert row.status == "ACTIVE"
+        assert row.last_synced_at is None
+        assert row.encrypted_refresh_token is not None
+        assert decrypt_token(TEST_KEY, row.encrypted_refresh_token) == PLAINTEXT_REFRESH
+
+
+def test_gmail_401_then_invalid_grant_revokes_once(gmail: GmailApp) -> None:
+    connection_id = _connected(gmail)
+    gmail.fake.unauthorized_get.add("msg-inbox")
+    gmail.fake.fail_refresh = True
+    gmail.fake.list_ids = ["msg-inbox"]
+    gmail.fake.messages = {"msg-inbox": _inbox("msg-inbox")}
+
+    failed = gmail.domain.client.post(f"/integrations/gmail/connections/{connection_id}/sync")
+
+    assert failed.status_code == 409
+    assert failed.json()["detail"] == "gmail authorization expired"
+    assert gmail.fake.refresh_calls == 1
+    assert gmail.fake.get_calls == ["msg-inbox"]
+    with session_scope(gmail.domain.factory) as session:
+        row = session.scalar(select(GmailConnection))
+        assert row is not None
+        assert row.status == "REVOKED"
+        assert row.encrypted_access_token is None
+        assert row.encrypted_refresh_token is None

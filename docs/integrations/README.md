@@ -36,7 +36,7 @@ The same Gmail id in one tenant inserts one Pulse message and one `EMAIL_RECEIVE
 
 Plain text is kept up to 32,768 characters. HTML and attachments are discarded. Bodies are not logged.
 
-Access tokens are refreshed when missing or expiring within 60 seconds. `invalid_grant` revokes the connection and stops. 429 and 5xx return 503 without moving `last_synced_at`. A malformed message stops the page. Messages already committed on that sync remain. There is no background retry.
+Access tokens are refreshed when missing or expiring within 60 seconds. A Gmail API 401 refreshes once and retries that request once. It does not revoke the connection. `invalid_grant` from refresh still revokes the connection, clears credentials, and stops. 429 and 5xx return 503 without moving `last_synced_at`. A malformed message stops the page. Messages already committed on that sync remain. There is no background retry.
 
 `history_id` may be saved from `users.getProfile` after a successful page. Phase 3 does not implement `history.list` incremental sync. A later phase can add that.
 

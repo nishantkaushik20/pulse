@@ -9,8 +9,10 @@ import base64
 import hashlib
 import logging
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -25,6 +27,7 @@ from pulse_api.gmail.client import (
     SYNC_MAX_MESSAGES,
     SYNC_QUERY,
     GmailClient,
+    GmailUnauthorized,
     GmailUnavailable,
     InvalidGrant,
     OAuthTokens,
@@ -59,6 +62,12 @@ class SyncCounts:
     examined: int
     ingested: int
     skipped: int
+
+
+@dataclass
+class _Access:
+    token: str
+    unauthorized_retry: bool = False
 
 
 class GmailService:
@@ -189,27 +198,27 @@ class GmailService:
         connection = self._connection(tenant, connection_id)
         if connection.status != GmailConnectionStatus.ACTIVE:
             raise ConflictError("gmail authorization expired")
-        access = self._usable_access_token(connection)
+        access = _Access(self._usable_access_token(connection))
         messages = MessageRepository(self._session, tenant.tenant_id)
-        try:
-            identifiers = self._client.list_message_ids(
-                access,
+        identifiers = self._call_gmail(
+            connection,
+            access,
+            lambda token: self._client.list_message_ids(
+                token,
                 query=SYNC_QUERY,
                 limit=SYNC_MAX_MESSAGES,
-            )
-        except GmailUnavailable:
-            self._mark_unavailable(connection)
-            raise UnavailableError("gmail is unavailable") from None
+            ),
+        )
         examined = 0
         ingested = 0
         skipped = 0
         for message_id in identifiers:
             examined += 1
-            try:
-                raw = self._client.get_message(access, message_id)
-            except GmailUnavailable:
-                self._mark_unavailable(connection)
-                raise UnavailableError("gmail is unavailable") from None
+
+            def _load_message(token: str, current_id: str = message_id) -> dict[str, Any]:
+                return self._client.get_message(token, current_id)
+
+            raw = self._call_gmail(connection, access, _load_message)
             if not is_received_inbox(raw.get("labelIds")):
                 skipped += 1
                 continue
@@ -226,11 +235,11 @@ class GmailService:
                 ingested += 1
             else:
                 skipped += 1
-        try:
-            profile = self._client.get_profile(access)
-        except GmailUnavailable:
-            self._mark_unavailable(connection)
-            raise UnavailableError("gmail is unavailable") from None
+        profile = self._call_gmail(
+            connection,
+            access,
+            self._client.get_profile,
+        )
         if profile.history_id:
             connection.history_id = profile.history_id
         connection.last_synced_at = utcnow()
@@ -279,6 +288,9 @@ class GmailService:
     def _usable_access_token(self, connection: GmailConnection) -> str:
         if not _needs_refresh(connection):
             return self._decrypt_required(connection.encrypted_access_token)
+        return self._refresh_access_token(connection)
+
+    def _refresh_access_token(self, connection: GmailConnection) -> str:
         if connection.encrypted_refresh_token is None:
             self._clear_credentials(connection, "invalid_grant")
             self._session.commit()
@@ -295,6 +307,31 @@ class GmailService:
         self._apply_tokens(connection, tokens, keep_refresh=connection.encrypted_refresh_token)
         self._session.commit()
         return tokens.access_token
+
+    def _call_gmail[T](
+        self,
+        connection: GmailConnection,
+        access: _Access,
+        call: Callable[[str], T],
+    ) -> T:
+        """Run one Gmail read. A 401 refreshes once and retries that call once."""
+        try:
+            return call(access.token)
+        except GmailUnauthorized:
+            pass
+        except GmailUnavailable:
+            self._mark_unavailable(connection)
+            raise UnavailableError("gmail is unavailable") from None
+        if access.unauthorized_retry:
+            self._mark_unavailable(connection)
+            raise UnavailableError("gmail is unavailable")
+        access.token = self._refresh_access_token(connection)
+        access.unauthorized_retry = True
+        try:
+            return call(access.token)
+        except (GmailUnauthorized, GmailUnavailable):
+            self._mark_unavailable(connection)
+            raise UnavailableError("gmail is unavailable") from None
 
     def _apply_tokens(
         self,
