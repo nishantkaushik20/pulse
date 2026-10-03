@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["apps/api/src"]
+pythonpath = [".", "apps/api/src"]
 addopts = "-q"
 
 [tool.ruff]

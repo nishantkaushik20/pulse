@@ -14,6 +14,7 @@
 - Never accept tenant_id from the client as authoritative.
 - Resolve tenant from authenticated context.
 - Every repository query must enforce tenant scope.
+- Tenant-owned queries go through the tenant-scoped repositories. Do not pass a SQLAlchemy session to an AI or tool layer.
 
 ## AI
 

@@ -2,7 +2,9 @@
 
 External actions for Pulse are recorded in this document.
 
-Constraints:
+The `actions` and `action_approvals` tables record a request and an approval decision. They do not execute external work, enforce idempotency, or write an audit log beyond the row itself.
+
+Constraints for later execution:
 
 - Actions must be idempotent.
 - External actions require audit logs.
