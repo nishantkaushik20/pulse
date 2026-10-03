@@ -15,8 +15,8 @@ Docker Compose runs PostgreSQL, Redis, the API, and the web app. Copy `.env.exam
 
 ## HTTP
 
-- `GET /health` reports process liveness.
-- `GET /ready` checks PostgreSQL and Redis. A failed dependency returns HTTP 503 and a generic check status. Connection details stay out of the response and the logs.
+- `GET /health` is liveness. It reports that the process can serve requests and does not check PostgreSQL or Redis. Docker Compose uses this probe. The API listens only after migrations finish, so a healthy probe means the process is up.
+- `GET /ready` is dependency readiness. It checks PostgreSQL and Redis. A failed dependency returns HTTP 503 and a generic check status. Connection details stay out of the response and the logs.
 
 ## Multi-tenancy
 

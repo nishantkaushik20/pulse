@@ -12,8 +12,18 @@ class Base(DeclarativeBase):
     """Declarative base for future tenant-owned models."""
 
 
-def create_db_engine(database_url: str) -> Engine:
-    return create_engine(database_url, pool_pre_ping=True)
+# Same budget as the Redis readiness socket timeout.
+READINESS_CONNECT_TIMEOUT_SECONDS = 2
+
+
+def create_db_engine(database_url: str, *, connect_timeout: int | None = None) -> Engine:
+    if connect_timeout is None:
+        return create_engine(database_url, pool_pre_ping=True)
+    return create_engine(
+        database_url,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": connect_timeout},
+    )
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -34,7 +44,10 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
 
 
 def check_database(database_url: str) -> None:
-    engine = create_db_engine(database_url)
+    engine = create_db_engine(
+        database_url,
+        connect_timeout=READINESS_CONNECT_TIMEOUT_SECONDS,
+    )
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))

@@ -37,6 +37,8 @@ _SENSITIVE_PARTS = (
     "authorization",
     "cookie",
     "credential",
+    "database_url",
+    "redis_url",
     "password",
     "secret",
     "token",
@@ -44,6 +46,12 @@ _SENSITIVE_PARTS = (
 )
 
 _BEARER = re.compile(r"Bearer\s+\S+", re.IGNORECASE)
+_URL_USERINFO = re.compile(r"([a-z][a-z0-9+.-]*://)[^\s/]*@", re.IGNORECASE)
+_SENSITIVE_QUERY = re.compile(
+    r"([?&](?:access_token|refresh_token|id_token|api_key|code|token|password|secret)=)[^&#\s]+",
+    re.IGNORECASE,
+)
+_QUERY_STRING = re.compile(r"\?[^ \t\"']*")
 _REDACTED = "***"
 
 
@@ -52,11 +60,17 @@ def _is_sensitive(key: str) -> bool:
     return any(part in normalized for part in _SENSITIVE_PARTS)
 
 
+def _redact_text(value: str) -> str:
+    redacted = _BEARER.sub("Bearer ***", value)
+    redacted = _URL_USERINFO.sub(r"\1***@", redacted)
+    return _SENSITIVE_QUERY.sub(r"\1***", redacted)
+
+
 def redact(value: Any, key: str | None = None) -> Any:
     if key is not None and _is_sensitive(key):
         return _REDACTED
     if isinstance(value, str):
-        return _BEARER.sub("Bearer ***", value)
+        return _redact_text(value)
     if isinstance(value, dict):
         return {
             str(item_key): redact(item_value, str(item_key))
@@ -65,6 +79,36 @@ def redact(value: Any, key: str | None = None) -> Any:
     if isinstance(value, list):
         return [redact(item) for item in value]
     return value
+
+
+class AccessQueryFilter(logging.Filter):
+    """Remove query strings from Uvicorn access log records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _QUERY_STRING.sub("", record.msg)
+        record.args = _strip_query_args(record.args)
+        return True
+
+
+def _strip_query_args(args: Any) -> Any:
+    if isinstance(args, tuple):
+        return tuple(
+            _QUERY_STRING.sub("", item) if isinstance(item, str) else item for item in args
+        )
+    if isinstance(args, dict):
+        return {
+            key: _QUERY_STRING.sub("", item) if isinstance(item, str) else item
+            for key, item in args.items()
+        }
+    return args
+
+
+def install_access_log_filter() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if any(isinstance(existing, AccessQueryFilter) for existing in access_logger.filters):
+        return
+    access_logger.addFilter(AccessQueryFilter())
 
 
 class JsonFormatter(logging.Formatter):
@@ -87,6 +131,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str) -> None:
+    install_access_log_filter()
     root = logging.getLogger()
     root.handlers.clear()
     handler = logging.StreamHandler(sys.stdout)

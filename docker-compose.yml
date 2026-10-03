@@ -38,6 +38,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Liveness probe. Dependency readiness is GET /ready.
     healthcheck:
       test:
         [
