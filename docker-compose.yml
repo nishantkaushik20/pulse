@@ -1,0 +1,3 @@
+# Local infrastructure for Pulse.
+# Services are added when they are defined in docs/architecture.md.
+services: {}
