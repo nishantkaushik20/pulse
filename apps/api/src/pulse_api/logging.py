@@ -43,12 +43,13 @@ _SENSITIVE_PARTS = (
     "secret",
     "token",
     "api_key",
+    "encryption_key",
 )
 
 _BEARER = re.compile(r"Bearer\s+\S+", re.IGNORECASE)
 _URL_USERINFO = re.compile(r"([a-z][a-z0-9+.-]*://)[^\s/]*@", re.IGNORECASE)
 _SENSITIVE_QUERY = re.compile(
-    r"([?&](?:access_token|refresh_token|id_token|api_key|code|token|password|secret)=)[^&#\s]+",
+    r"([?&](?:access_token|refresh_token|id_token|api_key|code|code_verifier|state|token|password|secret)=)[^&#\s]+",
     re.IGNORECASE,
 )
 _QUERY_STRING = re.compile(r"\?[^ \t\"']*")

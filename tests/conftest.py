@@ -2,7 +2,7 @@ import pytest
 
 from pulse_api.config import get_settings
 
-pytest_plugins = ["tests.domain_app"]
+pytest_plugins = ["tests.domain_app", "tests.gmail_app"]
 
 
 @pytest.fixture(autouse=True)

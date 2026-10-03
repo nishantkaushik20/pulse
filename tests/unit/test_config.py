@@ -42,6 +42,27 @@ def test_blank_clerk_values_are_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.clerk_jwks_url is None
 
 
+def test_blank_encryption_key_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://pulse:pulse@localhost/pulse")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("INTEGRATION_ENCRYPTION_KEY", " ")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.integration_encryption_key is None
+
+
+def test_encryption_key_must_decode_to_32_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://pulse:pulse@localhost/pulse")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("INTEGRATION_ENCRYPTION_KEY", "aaaa")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
 def test_production_requires_clerk(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://pulse:pulse@localhost/pulse")
@@ -51,3 +72,32 @@ def test_production_requires_clerk(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_production_requires_encryption_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://pulse:pulse@localhost/pulse")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("CLERK_ISSUER", "https://example.clerk.accounts.dev")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test")
+    monkeypatch.delenv("INTEGRATION_ENCRYPTION_KEY", raising=False)
+
+    with pytest.raises(ValidationError, match="INTEGRATION_ENCRYPTION_KEY"):
+        Settings(_env_file=None)
+
+
+def test_production_accepts_clerk_and_encryption_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://pulse:pulse@localhost/pulse")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("CLERK_ISSUER", "https://example.clerk.accounts.dev")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test")
+    monkeypatch.setenv(
+        "INTEGRATION_ENCRYPTION_KEY",
+        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.clerk_issuer == "https://example.clerk.accounts.dev"
+    assert settings.integration_encryption_key is not None

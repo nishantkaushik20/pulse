@@ -11,6 +11,7 @@ from starlette.responses import Response
 from pulse_api import __version__
 from pulse_api.config import get_settings
 from pulse_api.errors import DomainError
+from pulse_api.gmail.routes import router as gmail_router
 from pulse_api.health import router as health_router
 from pulse_api.logging import configure_logging
 from pulse_api.routes import customer_router, identity_router, operations_router
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(identity_router)
     app.include_router(customer_router)
     app.include_router(operations_router)
+    app.include_router(gmail_router)
 
     @app.exception_handler(DomainError)
     async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:

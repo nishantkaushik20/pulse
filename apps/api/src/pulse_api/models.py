@@ -10,6 +10,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -333,6 +335,152 @@ class ActionApproval(Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class GmailConnectionStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    REVOKED = "REVOKED"
+    ERROR = "ERROR"
+
+
+class GmailConnection(Base):
+    __tablename__ = "gmail_connections"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "external_account_id",
+            name="uq_gmail_connections_tenant_external",
+        ),
+        UniqueConstraint(
+            "external_account_id",
+            name="uq_gmail_connections_external_account_id",
+        ),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'REVOKED', 'ERROR')",
+            name="ck_gmail_connections_status",
+        ),
+        Index("ix_gmail_connections_tenant_id", "tenant_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    connected_by: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    external_account_id: Mapped[str] = mapped_column(String(320), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=GmailConnectionStatus.ACTIVE,
+    )
+    encrypted_refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    encrypted_access_token: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    encryption_key_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    history_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scopes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class MessageThread(Base):
+    __tablename__ = "message_threads"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "source",
+            "external_thread_id",
+            name="uq_message_threads_tenant_source_external",
+        ),
+        CheckConstraint("source IN ('gmail')", name="ck_message_threads_source"),
+        Index("ix_message_threads_tenant_id", "tenant_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_thread_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "source",
+            "external_message_id",
+            name="uq_messages_tenant_source_external",
+        ),
+        CheckConstraint("source IN ('gmail')", name="ck_messages_source"),
+        Index("ix_messages_tenant_id", "tenant_id"),
+        Index("ix_messages_tenant_thread", "tenant_id", "thread_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    thread_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("message_threads.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    to_addresses: Mapped[list[Any]] = mapped_column(JSON_OBJECT, nullable=False, default=list)
+    cc_addresses: Mapped[list[Any]] = mapped_column(JSON_OBJECT, nullable=False, default=list)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    snippet: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    body_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,

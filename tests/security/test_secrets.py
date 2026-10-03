@@ -44,7 +44,8 @@ def test_connection_urls_and_oauth_query_values_are_redacted() -> None:
         msg=(
             "dsn postgresql+psycopg://pulse:inline-db-password@db:5432/pulse "
             "cache redis://:inline-redis-password@cache:6379/0 "
-            "callback /oauth/callback?code=oauth-code-value&token=oauth-token-value"
+            "callback /oauth/callback?code=oauth-code-value&state=oauth-state-value"
+            "&code_verifier=pkce-verifier-value&token=oauth-token-value"
         ),
         args=(),
         exc_info=None,
@@ -65,6 +66,8 @@ def test_connection_urls_and_oauth_query_values_are_redacted() -> None:
         "env-db-password",
         "env-redis-password",
         "oauth-code-value",
+        "oauth-state-value",
+        "pkce-verifier-value",
         "oauth-token-value",
     ):
         assert secret not in serialized
@@ -74,6 +77,8 @@ def test_connection_urls_and_oauth_query_values_are_redacted() -> None:
     assert payload["REDIS_URL"] == "***"
     assert "postgresql+psycopg://***@db:5432/pulse" in payload["message"]
     assert "code=***" in payload["message"]
+    assert "state=***" in payload["message"]
+    assert "code_verifier=***" in payload["message"]
     assert "token=***" in payload["message"]
 
 
