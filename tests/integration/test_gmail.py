@@ -22,7 +22,7 @@ from pulse_api.gmail.deps import get_gmail_client, get_oauth_state_store
 from pulse_api.gmail.service import _pkce_challenge
 from pulse_api.logging import JsonFormatter
 from pulse_api.main import create_app
-from pulse_api.models import BusinessEvent, GmailConnection, Message, utcnow
+from pulse_api.models import AttentionItem, BusinessEvent, GmailConnection, Message, utcnow
 
 
 def _encoded(value: str) -> str:
@@ -361,6 +361,22 @@ def test_sync_ingests_inbox_once_and_skips_sent(
             "external_message_id": "msg-inbox",
             "external_thread_id": "thread-1",
         }
+        items = session.scalars(select(AttentionItem)).all()
+        assert len(items) == 1
+        assert items[0].status == "OPEN"
+        assert items[0].priority == "MEDIUM"
+        assert items[0].item_type == "email_review"
+        assert items[0].entity_type == "message"
+        assert items[0].entity_id == events[0].entity_id
+        assert items[0].title == "New email needs review"
+        assert items[0].description is not None
+        assert "SECRET-BODY-TEXT" not in items[0].description
+        assert "Hello subject" in items[0].description
+    listed_attention = gmail.domain.client.get("/attention-items")
+    assert listed_attention.status_code == 200
+    assert len(listed_attention.json()["items"]) == 1
+    assert "SECRET-BODY-TEXT" not in listed_attention.text
+    assert "SECRET-BODY-TEXT" not in caplog.text
 
 
 def test_refresh_keeps_existing_refresh_token(gmail: GmailApp) -> None:

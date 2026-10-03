@@ -3,9 +3,11 @@
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import Select, delete, func, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from pulse_api.errors import NotFoundError
@@ -13,6 +15,7 @@ from pulse_api.models import (
     Action,
     ActionApproval,
     AttentionItem,
+    AttentionStatus,
     BusinessEvent,
     Contact,
     Customer,
@@ -212,6 +215,45 @@ class AttentionRepository(TenantRepository[AttentionItem]):
             )
         )
 
+    def insert_idempotent(
+        self,
+        *,
+        item_type: str,
+        priority: str,
+        title: str,
+        description: str | None,
+        entity_type: str,
+        entity_id: UUID,
+    ) -> UUID | None:
+        """Insert one attention item, or none when the tenant already has this source.
+
+        The unique key is (tenant_id, type, entity_type, entity_id).
+        """
+        item_id = uuid4()
+        now = utcnow()
+        statement = (
+            _dialect_insert(self._session)(AttentionItem)
+            .values(
+                id=item_id,
+                tenant_id=self._tenant_id,
+                item_type=item_type,
+                priority=priority,
+                title=title,
+                description=description,
+                status=AttentionStatus.OPEN,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                due_at=None,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["tenant_id", "type", "entity_type", "entity_id"],
+            )
+            .returning(AttentionItem.id)
+        )
+        return cast(UUID | None, self._session.execute(statement).scalar_one_or_none())
+
 
 class ActionRepository(TenantRepository[Action]):
     model = Action
@@ -282,6 +324,13 @@ class ApprovalRepository(TenantRepository[ActionApproval]):
                 approved_at=approved_at,
             )
         )
+
+
+def _dialect_insert(session: Session) -> Any:
+    bind = session.get_bind()
+    if bind.dialect.name == "postgresql":
+        return postgresql_insert
+    return sqlite_insert
 
 
 def _rowcount(result: object) -> int:

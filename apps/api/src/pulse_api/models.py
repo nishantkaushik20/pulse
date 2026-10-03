@@ -234,6 +234,14 @@ class AttentionItem(Base):
             name="ck_attention_items_priority",
         ),
         Index("ix_attention_items_tenant_id_status", "tenant_id", "status"),
+        Index(
+            "uq_attention_items_tenant_type_entity",
+            "tenant_id",
+            "type",
+            "entity_type",
+            "entity_id",
+            unique=True,
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
