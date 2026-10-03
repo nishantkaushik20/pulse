@@ -32,7 +32,7 @@ Disconnect keeps the `gmail_connections` row, sets `REVOKED`, clears token colum
 
 `POST /integrations/gmail/connections/{id}/sync` is manual. The first implementation loads at most 50 messages matching `in:inbox newer_than:7d -in:sent`, then drops resources that are not inbox mail. Sent mail is not stored as `EMAIL_RECEIVED`.
 
-The same Gmail id in one tenant inserts one Pulse message and one `EMAIL_RECEIVED` event. A second sync does not insert either again. Event data is `provider`, `external_message_id`, and `external_thread_id`.
+The same Gmail id in one tenant inserts one Pulse message, one `EMAIL_RECEIVED` event, and one OPEN/MEDIUM attention item. A second sync does not insert any of them again. Event data is `provider`, `external_message_id`, and `external_thread_id`. The attention item is created from that event by the deterministic Attention Engine, not by the Gmail client.
 
 Plain text is kept up to 32,768 characters. HTML and attachments are discarded. Bodies are not logged.
 

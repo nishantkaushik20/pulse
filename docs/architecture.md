@@ -117,9 +117,31 @@ Gmail HTTP lives behind `GmailClient`. Routes do not receive access or refresh t
 
 Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML.
 
+Each new `EMAIL_RECEIVED` event is passed to the Attention Engine in the same transaction, before that message is committed.
+
+## Attention Engine
+
+```text
+Business events
+    ↓
+Deterministic rules
+    ↓
+Attention items
+```
+
+The engine is a tenant-scoped service. It does not call an LLM, and it does not rank by meaning. Gmail ingestion stays responsible for mail. It emits `EMAIL_RECEIVED`. The engine reads that Pulse event.
+
+Phase 4 has one rule. `EMAIL_RECEIVED` creates one `OPEN` attention item with priority `MEDIUM` and title `New email needs review`. The item points at the Pulse message. Its description may include the sender and subject. It does not include the message body.
+
+The item does not say that a reply is owed. Pulse does not ingest sent mail and does not match customers, so it cannot tell whether someone is waiting, whether the sender is a customer, or whether the mail is urgent. Keyword scans of the subject are not used.
+
+The same source cannot create a second item. `attention_items` is unique on `(tenant_id, type, entity_type, entity_id)` when those values are present. A repeated Gmail sync inserts no message, no event, and no attention item. Evaluating the same event again inserts nothing.
+
+There is no attention-engine HTTP route. Callers read items through the existing attention API. Creation during sync is synchronous. There is no worker, queue, or polling loop.
+
 ## Intentionally not implemented
 
-WhatsApp, AI, LLM calls, agents, attention ranking, automatic replies, Gmail sending, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope. The web app does not call these APIs yet.
+WhatsApp, AI, LLM calls, agents, attention ranking, semantic urgency, automatic replies, Gmail sending, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope. The web app does not call these APIs yet.
 
 ## Constraints
 

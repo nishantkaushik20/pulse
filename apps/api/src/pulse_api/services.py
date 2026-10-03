@@ -279,6 +279,7 @@ class BusinessEventService:
 
 class AttentionService:
     def __init__(self, session: Session, tenant: TenantContext) -> None:
+        self._session = session
         self._items = AttentionRepository(session, tenant.tenant_id)
 
     def list(self, *, limit: int, offset: int) -> Sequence[AttentionItem]:
@@ -295,15 +296,19 @@ class AttentionService:
         entity_id: UUID | None,
         due_at: datetime | None,
     ) -> AttentionItem:
-        return self._items.add(
-            item_type=item_type,
-            priority=priority,
-            title=title,
-            description=description,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            due_at=due_at,
-        )
+        try:
+            return self._items.add(
+                item_type=item_type,
+                priority=priority,
+                title=title,
+                description=description,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                due_at=due_at,
+            )
+        except IntegrityError:
+            self._session.rollback()
+            raise ConflictError("attention item already exists") from None
 
     def get(self, item_id: UUID) -> AttentionItem:
         item = self._items.get(item_id)

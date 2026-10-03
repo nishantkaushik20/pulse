@@ -56,7 +56,7 @@ class MessageRepository(TenantRepository[Message]):
         )
         return cast(Sequence[Message], self._session.scalars(statement).all())
 
-    def ingest(self, message: NormalizedMessage) -> UUID | None:
+    def ingest(self, message: NormalizedMessage) -> BusinessEvent | None:
         """Insert one inbox message and its EMAIL_RECEIVED event, or insert nothing.
 
         A conflict on (tenant_id, source, external_message_id) returns None and
@@ -89,23 +89,22 @@ class MessageRepository(TenantRepository[Message]):
         inserted = cast(UUID | None, self._session.execute(statement).scalar_one_or_none())
         if inserted is None:
             return None
-        self._session.add(
-            BusinessEvent(
-                tenant_id=self._tenant_id,
-                event_type="EMAIL_RECEIVED",
-                entity_type="message",
-                entity_id=inserted,
-                source=GMAIL_SOURCE,
-                occurred_at=message.received_at,
-                data={
-                    "provider": GMAIL_SOURCE,
-                    "external_message_id": message.external_message_id,
-                    "external_thread_id": message.external_thread_id,
-                },
-            )
+        event = BusinessEvent(
+            tenant_id=self._tenant_id,
+            event_type="EMAIL_RECEIVED",
+            entity_type="message",
+            entity_id=inserted,
+            source=GMAIL_SOURCE,
+            occurred_at=message.received_at,
+            data={
+                "provider": GMAIL_SOURCE,
+                "external_message_id": message.external_message_id,
+                "external_thread_id": message.external_thread_id,
+            },
         )
+        self._session.add(event)
         self._session.flush()
-        return inserted
+        return event
 
     def _ensure_thread(self, message: NormalizedMessage) -> UUID:
         existing = self._find_thread(message.external_thread_id)

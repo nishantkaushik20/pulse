@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pulse_api.attention_engine import AttentionEngine
 from pulse_api.config import Settings
 from pulse_api.context import TenantContext
 from pulse_api.crypto import ENCRYPTION_KEY_VERSION, TokenCipherError, decrypt_token, encrypt_token
@@ -229,12 +230,13 @@ class GmailService:
                 connection.updated_at = utcnow()
                 self._session.commit()
                 raise ConflictError("gmail message could not be stored") from None
-            created = messages.ingest(normalized)
-            self._session.commit()
-            if created is not None:
+            event = messages.ingest(normalized)
+            if event is not None:
+                AttentionEngine(self._session, tenant).apply(event)
                 ingested += 1
             else:
                 skipped += 1
+            self._session.commit()
         profile = self._call_gmail(
             connection,
             access,

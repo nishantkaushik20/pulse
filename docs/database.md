@@ -7,6 +7,7 @@ Migrations:
 - `0001_baseline` is empty.
 - `0002_domain` creates the identity and tenant-owned tables below.
 - `0003_gmail` creates `gmail_connections`, `message_threads`, and `messages`.
+- `0004_attention` adds the unique attention-item source index.
 
 Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The ORM also assigns UUIDs on the client so tests can use SQLite.
 
@@ -38,7 +39,7 @@ Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The 
 
 `business_events`: `tenant_id`, `event_type`, `entity_type`, `entity_id`, `source`, `occurred_at`, `data`, `created_at`. `data` is JSONB. Indexed by `(tenant_id, occurred_at)`. `entity_id` is not a foreign key.
 
-`attention_items`: `tenant_id`, `type`, `priority` (`LOW`, `MEDIUM`, `HIGH`), `title`, `description`, `status` (`OPEN`, `RESOLVED`), `entity_type`, `entity_id`, `due_at`, timestamps. Indexed by `(tenant_id, status)`. `entity_id` is not a foreign key.
+`attention_items`: `tenant_id`, `type`, `priority` (`LOW`, `MEDIUM`, `HIGH`), `title`, `description`, `status` (`OPEN`, `RESOLVED`), `entity_type`, `entity_id`, `due_at`, timestamps. Indexed by `(tenant_id, status)`. Unique `(tenant_id, type, entity_type, entity_id)`. `entity_id` is not a foreign key. Rows with a null entity are not collapsed by that unique index, because SQL treats those nulls as distinct. The `email_review` rule uses the unique key so one message produces one attention item.
 
 `actions`: `tenant_id`, `action_type`, `status` (`PENDING`, `COMPLETED`, `CANCELLED`), `requested_by`, `entity_type`, `entity_id`, `input`, `result`, `created_at`, `completed_at`. `input` and `result` are JSONB. Indexed by `(tenant_id, status)`. `entity_id` is not a foreign key. This table records an action request. It does not execute one.
 
