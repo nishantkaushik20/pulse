@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -62,6 +62,18 @@ class MessageRepository(TenantRepository[Message]):
             .offset(offset)
         )
         return cast(Sequence[Message], self._session.scalars(statement).all())
+
+    def clear_bodies(self) -> int:
+        count = self._session.scalar(
+            select(func.count()).select_from(Message).where(Message.tenant_id == self._tenant_id)
+        )
+        self._session.execute(
+            update(Message)
+            .where(Message.tenant_id == self._tenant_id)
+            .values(body_text="", snippet="")
+        )
+        self._session.flush()
+        return int(count or 0)
 
     def ingest(self, message: NormalizedMessage) -> BusinessEvent | None:
         """Insert one inbox message and its EMAIL_RECEIVED event, or insert nothing.

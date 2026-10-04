@@ -24,7 +24,12 @@ def upgrade() -> None:
     op.create_table(
         "ai_runs",
         sa.Column("id", _UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "tenant_id",
+            _UUID,
+            sa.ForeignKey("tenants.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("purpose", sa.String(64), nullable=False),
         sa.Column("model", sa.String(100), nullable=False),
         sa.Column("input_tokens", sa.Integer, nullable=False, server_default="0"),

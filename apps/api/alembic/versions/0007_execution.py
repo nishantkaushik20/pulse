@@ -78,7 +78,8 @@ def downgrade() -> None:
     op.drop_column("actions", "idempotency_key")
     op.drop_constraint("ck_actions_status", "actions", type_="check")
     op.execute(
-        "UPDATE actions SET status = 'PENDING' WHERE status NOT IN ('PENDING', 'COMPLETED', 'CANCELLED')"
+        "UPDATE actions SET status = 'PENDING' "
+        "WHERE status NOT IN ('PENDING', 'COMPLETED', 'CANCELLED')"
     )
     op.alter_column("actions", "status", type_=sa.String(length=16), existing_nullable=False)
     op.create_check_constraint(

@@ -13,6 +13,7 @@ from pulse_api.gmail.schemas import (
     GmailSyncOut,
     MessageDetail,
     MessageList,
+    MessagePurgeOut,
     MessageSummary,
     MessageThreadList,
     MessageThreadOut,
@@ -64,6 +65,11 @@ def disconnect_gmail(connection_id: UUID, service: GmailService = _gmail) -> Gma
 def sync_gmail(connection_id: UUID, service: GmailService = _gmail) -> GmailSyncOut:
     counts = service.sync(connection_id)
     return GmailSyncOut(examined=counts.examined, ingested=counts.ingested, skipped=counts.skipped)
+
+
+@router.post("/integrations/gmail/messages/purge", response_model=MessagePurgeOut)
+def purge_message_bodies(service: GmailService = _gmail) -> MessagePurgeOut:
+    return MessagePurgeOut(cleared=service.purge_message_bodies())
 
 
 @router.get("/message-threads", response_model=MessageThreadList)
