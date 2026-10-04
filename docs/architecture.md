@@ -100,7 +100,7 @@ Created actions are `PENDING`. Created attention items are `OPEN`. Approval does
 
 ## Gmail ingestion
 
-Phase 3 connects one Gmail mailbox and manually ingests a bounded inbox page. The web app does not implement a Gmail screen. The callback redirects to `WEB_APP_URL` with `?gmail=connected` or `?gmail=error&reason=`.
+Phase 3 connects one Gmail mailbox and manually ingests a bounded inbox page. The home screen asks for a business name when the signed-in user has no tenant, then asks an owner to connect Gmail. Connect still starts at `POST /integrations/gmail/connect`. The browser does not send `tenant_id`. The callback redirects to `WEB_APP_URL` with `?gmail=connected` or `?gmail=error&reason=`. A connected mailbox can be synced or disconnected from that same screen. Members can sync. Only an owner can connect or disconnect.
 
 1. An authenticated `OWNER` calls `POST /integrations/gmail/connect`.
 2. Pulse resolves `TenantContext`, generates an opaque `state` and a PKCE verifier, and stores `oauth_state:{state}` in Redis for 10 minutes. The value is `user_id`, `tenant_id`, and `pkce_verifier`. It is not a token.
