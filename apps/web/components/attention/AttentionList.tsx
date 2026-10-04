@@ -6,9 +6,10 @@ type AttentionListProps = {
   items: AttentionItem[];
   now: Date;
   onResolve: (id: string) => void;
+  onDismiss: (id: string, reason: "not_relevant" | "done" | "waiting") => void;
 };
 
-export function AttentionList({ items, now, onResolve }: AttentionListProps) {
+export function AttentionList({ items, now, onResolve, onDismiss }: AttentionListProps) {
   const groups = groupByPriority(items);
   return (
     <div>
@@ -16,7 +17,13 @@ export function AttentionList({ items, now, onResolve }: AttentionListProps) {
         <section key={group.priority} aria-label={`${group.priority} priority`}>
           <h2>{group.priority}</h2>
           {group.items.map((item) => (
-            <AttentionCard key={item.id} item={item} now={now} onResolve={onResolve} />
+            <AttentionCard
+              key={item.id}
+              item={item}
+              now={now}
+              onResolve={onResolve}
+              onDismiss={onDismiss}
+            />
           ))}
         </section>
       ))}

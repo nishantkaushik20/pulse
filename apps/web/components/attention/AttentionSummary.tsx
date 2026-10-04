@@ -7,6 +7,7 @@ export function AttentionSummary({ count }: AttentionSummaryProps) {
   return (
     <header>
       <h1>What needs your attention?</h1>
+      <p>Every new inbox message appears here until Pulse learns which ones matter.</p>
       <p>{label}</p>
     </header>
   );

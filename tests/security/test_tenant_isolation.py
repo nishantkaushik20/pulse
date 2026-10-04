@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from tests.domain_app import DomainApp
+from tests.records import record_attention, record_event
 
 from pulse_api.context import TenantContext
 from pulse_api.db import session_scope
@@ -83,27 +84,8 @@ def test_tenant_a_cannot_read_tenant_b_records_by_known_id(
     assert contact.json()["email"] == "pat@example.com"
     contact_id = contact.json()["id"]
 
-    attention = domain.client.post(
-        "/attention-items",
-        json={"type": "follow_up", "title": "Call back", "status": "RESOLVED"},
-    )
-    assert attention.status_code == 201
-    assert attention.json()["status"] == "OPEN"
-    attention_id = attention.json()["id"]
-
-    event = domain.client.post(
-        "/business-events",
-        json={
-            "event_type": "note",
-            "entity_type": "customer",
-            "entity_id": customer_id,
-            "source": "api",
-            "data": {"note": "private"},
-            "tenant_id": str(uuid4()),
-        },
-    )
-    assert event.status_code == 201
-    event_id = event.json()["id"]
+    attention_id = record_attention(domain, title="Call back", item_type="follow_up")
+    event_id = record_event(domain, entity_id=UUID(customer_id))
 
     action = domain.client.post(
         "/actions",
