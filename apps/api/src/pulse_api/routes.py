@@ -1,8 +1,10 @@
 """Minimal REST API for identity and tenant-scoped records."""
 
+from collections.abc import Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse, Response
 
 from pulse_api.deps import (
     get_action_service,
@@ -11,13 +13,16 @@ from pulse_api.deps import (
     get_customer_service,
     get_event_service,
     get_identity_service,
+    get_reasoning_service,
 )
-from pulse_api.errors import ForbiddenError
+from pulse_api.errors import ForbiddenError, UnavailableError
 from pulse_api.models import TenantRole
+from pulse_api.reasoning import ReasoningService
 from pulse_api.schemas import (
     ActionCreate,
     ActionList,
     ActionOut,
+    AiTextOut,
     ApprovalCreate,
     ApprovalList,
     ApprovalOut,
@@ -67,6 +72,7 @@ _contacts = Depends(get_contact_service)
 _events = Depends(get_event_service)
 _attention = Depends(get_attention_service)
 _actions = Depends(get_action_service)
+_reasoning = Depends(get_reasoning_service)
 _limit = Query(default=50, ge=1, le=100)
 _offset = Query(default=0, ge=0, le=10_000)
 
@@ -283,6 +289,30 @@ def dismiss_attention(
     service: AttentionService = _attention,
 ) -> AttentionOut:
     return AttentionOut.from_row(service.dismiss(item_id, body.reason))
+
+
+@operations_router.post("/attention/{item_id}/explain", response_model=AiTextOut)
+def explain_attention(
+    item_id: UUID,
+    service: ReasoningService = _reasoning,
+) -> AiTextOut | JSONResponse:
+    return _ai_text(service.explain, item_id)
+
+
+@operations_router.post("/attention/{item_id}/draft", response_model=AiTextOut)
+def draft_attention(
+    item_id: UUID,
+    service: ReasoningService = _reasoning,
+) -> AiTextOut | JSONResponse:
+    return _ai_text(service.draft, item_id)
+
+
+def _ai_text(call: Callable[[UUID], str], item_id: UUID) -> AiTextOut | JSONResponse:
+    try:
+        text = call(item_id)
+    except UnavailableError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return AiTextOut(text=text)
 
 
 @operations_router.get("/attention-items", response_model=AttentionList)
