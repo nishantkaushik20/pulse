@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -343,6 +343,8 @@ class AttentionOut(BaseModel):
     entity_type: str | None
     entity_id: UUID | None
     due_at: datetime | None
+    dismiss_reason: str | None
+    resolved_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -358,6 +360,8 @@ class AttentionOut(BaseModel):
             entity_type=row.entity_type,
             entity_id=row.entity_id,
             due_at=row.due_at,
+            dismiss_reason=row.dismiss_reason,
+            resolved_at=row.resolved_at,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -378,9 +382,21 @@ class AttentionInboxItem(BaseModel):
     source: str | None
     entity_type: str | None
     entity_id: UUID | None
+    thread_id: UUID | None
+    customer_id: UUID | None
+    customer_name: str | None
+    match_method: str | None
+    dismiss_reason: str | None
 
     @classmethod
-    def from_row(cls, row: AttentionItem, source: str | None) -> "AttentionInboxItem":
+    def from_row(
+        cls,
+        row: AttentionItem,
+        source: str | None,
+        *,
+        thread_id: UUID | None,
+        customer_name: str | None,
+    ) -> "AttentionInboxItem":
         return cls(
             id=row.id,
             type=row.item_type,
@@ -392,7 +408,18 @@ class AttentionInboxItem(BaseModel):
             source=source,
             entity_type=row.entity_type,
             entity_id=row.entity_id,
+            thread_id=thread_id,
+            customer_id=row.matched_customer_id,
+            customer_name=customer_name,
+            match_method=row.match_method,
+            dismiss_reason=row.dismiss_reason,
         )
+
+
+class AttentionDismiss(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    reason: Literal["not_relevant", "done", "waiting"]
 
 
 class AttentionInbox(BaseModel):

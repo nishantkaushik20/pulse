@@ -12,7 +12,8 @@ from pulse_api.deps import (
     get_event_service,
     get_identity_service,
 )
-from pulse_api.models import TenantRole, utcnow
+from pulse_api.errors import ForbiddenError
+from pulse_api.models import TenantRole
 from pulse_api.schemas import (
     ActionCreate,
     ActionList,
@@ -21,6 +22,7 @@ from pulse_api.schemas import (
     ApprovalList,
     ApprovalOut,
     AttentionCreate,
+    AttentionDismiss,
     AttentionInbox,
     AttentionInboxItem,
     AttentionList,
@@ -232,15 +234,9 @@ def create_event(
     body: BusinessEventCreate,
     service: BusinessEventService = _events,
 ) -> BusinessEventOut:
-    row = service.create(
-        event_type=body.event_type,
-        entity_type=body.entity_type,
-        entity_id=body.entity_id,
-        source=body.source,
-        occurred_at=body.occurred_at or utcnow(),
-        data=body.data,
-    )
-    return BusinessEventOut.from_row(row)
+    """Integrations record events. Clients cannot invent them."""
+    del body, service
+    raise ForbiddenError("business events are recorded by integrations")
 
 
 @operations_router.get("/business-events/{event_id}", response_model=BusinessEventOut)
@@ -252,13 +248,30 @@ def read_event(event_id: UUID, service: BusinessEventService = _events) -> Busin
 def list_attention_inbox(service: AttentionService = _attention) -> AttentionInbox:
     """Open attention for the authenticated tenant. The tenant is not a parameter."""
     return AttentionInbox(
-        items=[AttentionInboxItem.from_row(row, source) for row, source in service.list_inbox()]
+        items=[
+            AttentionInboxItem.from_row(
+                row.item,
+                row.source,
+                thread_id=row.thread_id,
+                customer_name=row.customer_name,
+            )
+            for row in service.list_inbox()
+        ]
     )
 
 
 @operations_router.post("/attention/{item_id}/resolve", response_model=AttentionOut)
 def resolve_attention(item_id: UUID, service: AttentionService = _attention) -> AttentionOut:
     return AttentionOut.from_row(service.resolve(item_id))
+
+
+@operations_router.post("/attention/{item_id}/dismiss", response_model=AttentionOut)
+def dismiss_attention(
+    item_id: UUID,
+    body: AttentionDismiss,
+    service: AttentionService = _attention,
+) -> AttentionOut:
+    return AttentionOut.from_row(service.dismiss(item_id, body.reason))
 
 
 @operations_router.get("/attention-items", response_model=AttentionList)
@@ -276,16 +289,9 @@ def create_attention(
     body: AttentionCreate,
     service: AttentionService = _attention,
 ) -> AttentionOut:
-    row = service.create(
-        item_type=body.type,
-        priority=body.priority,
-        title=body.title,
-        description=body.description,
-        entity_type=body.entity_type,
-        entity_id=body.entity_id,
-        due_at=body.due_at,
-    )
-    return AttentionOut.from_row(row)
+    """The attention engine records items. Clients cannot invent them."""
+    del body, service
+    raise ForbiddenError("attention items are recorded by the attention engine")
 
 
 @operations_router.get("/attention-items/{item_id}", response_model=AttentionOut)

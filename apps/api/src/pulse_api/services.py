@@ -1,6 +1,7 @@
 """Application services. Callers pass tenant context; they do not pass a client tenant id."""
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -12,6 +13,7 @@ from pulse_api.auth import ClerkIdentity
 from pulse_api.context import RequestContext, TenantContext, resolve_current_tenant
 from pulse_api.errors import ConflictError, NotFoundError
 from pulse_api.gmail.repository import MessageRepository
+from pulse_api.matching import EXACT_EMAIL, customer_name, exact_email_customer
 from pulse_api.models import (
     Action,
     ActionApproval,
@@ -78,6 +80,17 @@ def build_request_context(session: Session, user: User) -> RequestContext:
         name=user.name,
         tenant=resolve_current_tenant(session, user.id),
     )
+
+
+DISMISS_REASONS = frozenset({"not_relevant", "done", "waiting"})
+
+
+@dataclass(frozen=True)
+class InboxRow:
+    item: AttentionItem
+    source: str | None
+    thread_id: UUID | None
+    customer_name: str | None
 
 
 class IdentityService:
@@ -283,16 +296,18 @@ class BusinessEventService:
 class AttentionService:
     def __init__(self, session: Session, tenant: TenantContext) -> None:
         self._session = session
+        self._tenant = tenant
         self._items = AttentionRepository(session, tenant.tenant_id)
         self._messages = MessageRepository(session, tenant.tenant_id)
 
     def list(self, *, limit: int, offset: int) -> Sequence[AttentionItem]:
         return self._items.list(limit=limit, offset=offset)
 
-    def list_inbox(self) -> Sequence[tuple[AttentionItem, str | None]]:
-        """Open attention for the current tenant, with a source when a message exists.
+    def list_inbox(self) -> Sequence[InboxRow]:
+        """Open attention for the current tenant.
 
-        The source is the message's stored provider. The message body is not read.
+        Message bodies are not read. Exact email matches are recomputed and
+        stored on the item. Customer rows are not created.
         """
         rows = self._items.list_open(limit=INBOX_LIMIT)
         message_ids = [
@@ -301,15 +316,36 @@ class AttentionService:
             if row.entity_type == "message" and row.entity_id is not None
         ]
         messages = self._messages.get_many(message_ids)
-        inbox = []
+        inbox: list[InboxRow] = []
         for row in rows:
             source = None
+            thread_id = None
+            name = None
             if row.entity_type == "message" and row.entity_id is not None:
                 message = messages.get(row.entity_id)
                 if message is not None:
                     source = message.source
-            inbox.append((row, source))
+                    thread_id = message.thread_id
+                    name = self._refresh_match(row, message.from_email)
+            inbox.append(InboxRow(item=row, source=source, thread_id=thread_id, customer_name=name))
+        self._session.flush()
         return inbox
+
+    def _refresh_match(self, item: AttentionItem, email: str | None) -> str | None:
+        customer_id, method = exact_email_customer(self._session, self._tenant.tenant_id, email)
+        name = customer_name(self._session, self._tenant.tenant_id, customer_id)
+        if customer_id is not None and name is None:
+            customer_id = None
+            method = None
+        if method is not None and method != EXACT_EMAIL:
+            customer_id = None
+            method = None
+            name = None
+        if item.matched_customer_id != customer_id or item.match_method != method:
+            item.matched_customer_id = customer_id
+            item.match_method = method
+            item.updated_at = utcnow()
+        return name
 
     def create(
         self,
@@ -346,8 +382,31 @@ class AttentionService:
         """Mark an open item resolved. Resolving again returns the same row."""
         item = self.get(item_id)
         if item.status != AttentionStatus.RESOLVED:
+            moment = utcnow()
             item.status = AttentionStatus.RESOLVED
-            item.updated_at = utcnow()
+            item.resolved_at = moment
+            item.resolved_by = self._tenant.user_id
+            item.updated_at = moment
+            self._session.flush()
+        return item
+
+    def dismiss(self, item_id: UUID, reason: str) -> AttentionItem:
+        """Hide an item and record why. The row stays. The same reason is idempotent."""
+        if reason not in DISMISS_REASONS:
+            raise ConflictError("dismiss reason is not allowed")
+        item = self.get(item_id)
+        moment = utcnow()
+        changed = False
+        if item.status != AttentionStatus.RESOLVED:
+            item.status = AttentionStatus.RESOLVED
+            item.resolved_at = moment
+            item.resolved_by = self._tenant.user_id
+            changed = True
+        if item.dismiss_reason != reason:
+            item.dismiss_reason = reason
+            changed = True
+        if changed:
+            item.updated_at = moment
             self._session.flush()
         return item
 

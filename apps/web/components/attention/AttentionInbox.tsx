@@ -7,6 +7,7 @@ import { useClerkReady } from "@/components/auth/ClerkReady";
 import { MailboxPanel, SetupPanel } from "@/components/setup/SetupPanel";
 import {
   AttentionHttpError,
+  dismissAttention,
   loadAttention,
   resolveAttention,
   withoutItem,
@@ -169,6 +170,9 @@ function SessionInbox() {
       onResolve={(id) => {
         void runResolve(getToken, id, setRemote);
       }}
+      onDismiss={(id, reason) => {
+        void runDismiss(getToken, id, reason, setRemote);
+      }}
       onRetry={() => {
         void refresh(getToken, redirectNotice, setRemote);
       }}
@@ -319,6 +323,49 @@ async function runDisconnect(
       return;
     }
     setState({ status: "error" });
+  }
+}
+
+async function runDismiss(
+  getToken: () => Promise<string | null>,
+  id: string,
+  reason: "not_relevant" | "done" | "waiting",
+  setState: (updater: SessionState | ((current: SessionState) => SessionState)) => void,
+): Promise<void> {
+  const token = await sessionToken(getToken);
+  if (!token) {
+    setState({ status: "signed-out", configured: true });
+    return;
+  }
+  try {
+    await dismissAttention(apiBaseUrl(), id, reason, token);
+    setState((current) => {
+      if (current.status !== "ready" || current.attention.status !== "ready") {
+        return current;
+      }
+      return {
+        ...current,
+        attention: {
+          status: "ready",
+          items: withoutItem(current.attention.items, id),
+          notice: null,
+        },
+      };
+    });
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      setState({ status: "signed-out", configured: true });
+      return;
+    }
+    setState((current) => {
+      if (current.status !== "ready" || current.attention.status !== "ready") {
+        return current;
+      }
+      return {
+        ...current,
+        attention: { ...current.attention, notice: "That item could not be dismissed." },
+      };
+    });
   }
 }
 

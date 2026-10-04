@@ -13,6 +13,9 @@ const item = {
   source: "gmail",
   entity_type: "message",
   entity_id: "message-1",
+  thread_id: null,
+  customer_name: null,
+  match_method: null,
   body_text: "SECRET-BODY-TEXT",
   tenant_id: "tenant-secret",
 };
@@ -41,6 +44,9 @@ describe("attention client", () => {
         source: "gmail",
         entity_type: "message",
         entity_id: "message-1",
+        thread_id: null,
+        customer_name: null,
+        match_method: null,
       },
     ]);
     expect(JSON.stringify(items)).not.toContain("SECRET-BODY-TEXT");

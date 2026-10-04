@@ -134,7 +134,7 @@ The engine is a tenant-scoped service. It does not call an LLM, and it does not 
 
 Phase 4 has one rule. `EMAIL_RECEIVED` creates one `OPEN` attention item with priority `MEDIUM` and title `New email needs review`. The item points at the Pulse message. Its description may include the sender and subject. It does not include the message body.
 
-The item does not say that a reply is owed. Pulse does not ingest sent mail and does not match customers, so it cannot tell whether someone is waiting, whether the sender is a customer, or whether the mail is urgent. Keyword scans of the subject are not used.
+The item does not say that a reply is owed. Pulse does not ingest sent mail, so it cannot tell whether someone is waiting. An exact case-insensitive match from the sender address to a contact email, then a customer email, stores `matched_customer_id` and `match_method=exact_email`. That match never inserts a customer. An unmatched sender stays unmatched. Keyword scans of the subject are not used.
 
 The same source cannot create a second item. `attention_items` is unique on `(tenant_id, type, entity_type, entity_id)` when those values are present. A repeated Gmail sync inserts no message, no event, and no attention item. Evaluating the same event again inserts nothing.
 
@@ -166,7 +166,7 @@ The browser allows the configured `WEB_APP_URL` origin to call `GET` and `POST` 
 
 ## Intentionally not implemented
 
-WhatsApp, AI, LLM calls, agents, attention ranking, semantic urgency, automatic replies, Gmail sending, Gmail deep links, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope.
+WhatsApp, AI, LLM calls, agents, attention ranking, semantic urgency, automatic replies, Gmail sending, Gmail deep links, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, fuzzy customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope.
 
 ## Constraints
 

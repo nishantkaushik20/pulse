@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from pulse_api.context import TenantContext
 from pulse_api.gmail.repository import MessageRepository
+from pulse_api.matching import customer_name, exact_email_customer
 from pulse_api.models import AttentionPriority, BusinessEvent, Message
 from pulse_api.repositories import AttentionRepository
 
@@ -27,10 +28,13 @@ class AttentionDecision:
     description: str | None
     entity_type: str
     entity_id: UUID
+    matched_customer_id: UUID | None = None
+    match_method: str | None = None
 
 
 class AttentionEngine:
     def __init__(self, session: Session, tenant: TenantContext) -> None:
+        self._session = session
         self._tenant = tenant
         self._messages = MessageRepository(session, tenant.tenant_id)
         self._items = AttentionRepository(session, tenant.tenant_id)
@@ -43,14 +47,22 @@ class AttentionEngine:
         message = self._messages.get(event.entity_id)
         if message is None:
             return []
+        customer_id, method = exact_email_customer(
+            self._session,
+            self._tenant.tenant_id,
+            message.from_email,
+        )
+        name = customer_name(self._session, self._tenant.tenant_id, customer_id)
         return [
             AttentionDecision(
                 item_type=EMAIL_REVIEW_TYPE,
                 priority=AttentionPriority.MEDIUM,
                 title=EMAIL_REVIEW_TITLE,
-                description=_description(message),
+                description=_description(message, name),
                 entity_type="message",
                 entity_id=message.id,
+                matched_customer_id=customer_id,
+                match_method=method,
             )
         ]
 
@@ -64,13 +76,15 @@ class AttentionEngine:
                 description=decision.description,
                 entity_type=decision.entity_type,
                 entity_id=decision.entity_id,
+                matched_customer_id=decision.matched_customer_id,
+                match_method=decision.match_method,
             )
             if item_id is not None:
                 created.append(item_id)
         return created
 
 
-def _description(message: Message) -> str | None:
+def _description(message: Message, customer_name_text: str | None) -> str | None:
     lines: list[str] = []
     sender = message.from_email or ""
     if message.from_name and sender:
@@ -80,6 +94,8 @@ def _description(message: Message) -> str | None:
     subject = message.subject.strip()
     if subject:
         lines.append(f"Subject: {subject[:500]}")
+    if customer_name_text:
+        lines.append(f"Customer: {customer_name_text[:200]}")
     if not lines:
         return None
     return "\n".join(lines)

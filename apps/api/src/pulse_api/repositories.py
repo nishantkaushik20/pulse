@@ -227,6 +227,8 @@ class AttentionRepository(TenantRepository[AttentionItem]):
         description: str | None,
         entity_type: str,
         entity_id: UUID,
+        matched_customer_id: UUID | None = None,
+        match_method: str | None = None,
     ) -> UUID | None:
         """Insert one attention item, or none when the tenant already has this source.
 
@@ -247,6 +249,8 @@ class AttentionRepository(TenantRepository[AttentionItem]):
                 entity_type=entity_type,
                 entity_id=entity_id,
                 due_at=None,
+                matched_customer_id=matched_customer_id,
+                match_method=match_method,
                 created_at=now,
                 updated_at=now,
             )
