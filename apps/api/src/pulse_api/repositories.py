@@ -14,6 +14,7 @@ from pulse_api.errors import NotFoundError
 from pulse_api.models import (
     Action,
     ActionApproval,
+    ApprovalStatus,
     AttentionItem,
     AttentionPriority,
     AttentionStatus,
@@ -306,6 +307,10 @@ class ActionRepository(TenantRepository[Action]):
             )
         )
 
+    def get_by_idempotency(self, key: str) -> Action | None:
+        statement = self._select().where(Action.idempotency_key == key)
+        return cast(Action | None, self._session.scalar(statement))
+
 
 class ApprovalRepository(TenantRepository[ActionApproval]):
     model = ActionApproval
@@ -321,6 +326,17 @@ class ApprovalRepository(TenantRepository[ActionApproval]):
             .offset(offset)
         )
         return cast(Sequence[ActionApproval], self._session.scalars(statement).all())
+
+    def has_approved(self, action_id: UUID) -> bool:
+        statement = (
+            self._select()
+            .where(
+                ActionApproval.action_id == action_id,
+                ActionApproval.status == ApprovalStatus.APPROVED,
+            )
+            .limit(1)
+        )
+        return self._session.scalar(statement) is not None
 
     def get_for_action(self, action_id: UUID, approval_id: UUID) -> ActionApproval | None:
         statement = self._select().where(
