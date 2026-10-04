@@ -274,6 +274,13 @@ class GmailService:
             )
         )
 
+    def purge_message_bodies(self) -> int:
+        tenant = self._require_tenant()
+        tenant.require_owner()
+        cleared = MessageRepository(self._session, tenant.tenant_id).clear_bodies()
+        logger.info("message bodies purged", extra={"cleared": cleared})
+        return cleared
+
     def get_message(self, message_id: UUID) -> Message:
         tenant = self._require_tenant()
         row = MessageRepository(self._session, tenant.tenant_id).get(message_id)

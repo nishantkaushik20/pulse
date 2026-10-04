@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -52,9 +53,14 @@ class AttentionPriority(StrEnum):
 
 
 class ActionStatus(StrEnum):
-    PENDING = "PENDING"
+    PROPOSED = "PROPOSED"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    EXECUTING = "EXECUTING"
     COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    EXPIRED = "EXPIRED"
 
 
 class ApprovalStatus(StrEnum):
@@ -301,10 +307,19 @@ class Action(Base):
     __tablename__ = "actions"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING', 'COMPLETED', 'CANCELLED')",
+            "status IN ('PROPOSED', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', "
+            "'COMPLETED', 'FAILED', 'CANCELLED', 'EXPIRED')",
             name="ck_actions_status",
         ),
         Index("ix_actions_tenant_id_status", "tenant_id", "status"),
+        Index(
+            "uq_actions_tenant_idempotency_key",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -314,7 +329,8 @@ class Action(Base):
         nullable=False,
     )
     action_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default=ActionStatus.PENDING)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=ActionStatus.PROPOSED)
+    idempotency_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     requested_by: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
@@ -331,6 +347,39 @@ class Action(Base):
         nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_tenant_id_created_at", "tenant_id", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    result_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSON_OBJECT,
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
 
 
 class ActionApproval(Base):
@@ -364,6 +413,34 @@ class ActionApproval(Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class AiRun(Base):
+    __tablename__ = "ai_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('success', 'failed')", name="ck_ai_runs_status"),
+        Index("ix_ai_runs_tenant_id_created_at", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    purpose: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,

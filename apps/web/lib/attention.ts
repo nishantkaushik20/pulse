@@ -82,6 +82,21 @@ export async function loadAttention(
   return parseInbox(await response.json());
 }
 
+export async function loadBriefing(
+  baseUrl: string,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AttentionItem[]> {
+  const response = await fetchImpl(`${baseUrl}/briefing`, {
+    headers: authorizationHeaders(token),
+  });
+  if (!response.ok) {
+    throw new AttentionHttpError(response.status);
+  }
+  const items = parseInbox(await response.json());
+  return items.slice(0, 5);
+}
+
 export async function dismissAttention(
   baseUrl: string,
   id: string,

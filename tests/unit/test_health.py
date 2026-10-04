@@ -54,3 +54,14 @@ def test_ready_fails_when_redis_check_fails(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert response.status_code == 503
     assert response.json()["checks"]["redis"] == "error"
+
+
+def test_response_carries_a_request_id() -> None:
+    with TestClient(create_app()) as client:
+        generated = client.get("/health")
+        echoed = client.get("/health", headers={"X-Request-ID": "req-1"})
+        rejected = client.get("/health", headers={"X-Request-ID": "Bearer secret"})
+
+    assert generated.headers["X-Request-ID"]
+    assert echoed.headers["X-Request-ID"] == "req-1"
+    assert rejected.headers["X-Request-ID"] != "Bearer secret"

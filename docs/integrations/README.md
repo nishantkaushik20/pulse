@@ -2,7 +2,7 @@
 
 Per-integration documentation lives in this directory.
 
-New integrations require integration tests.
+New integrations require integration tests. Do not add a second source while `docs/validation.md` says `status: blocked`.
 
 ## Gmail
 

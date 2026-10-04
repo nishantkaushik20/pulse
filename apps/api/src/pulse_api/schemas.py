@@ -422,8 +422,18 @@ class AttentionDismiss(BaseModel):
     reason: Literal["not_relevant", "done", "waiting"]
 
 
+class AiTextOut(BaseModel):
+    text: str
+
+
 class AttentionInbox(BaseModel):
     items: list[AttentionInboxItem]
+
+
+class ActionExecute(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    idempotency_key: str = Field(min_length=1, max_length=100)
 
 
 class ActionCreate(BaseModel):

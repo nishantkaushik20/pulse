@@ -6,11 +6,13 @@ from typing import Annotated
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
+from pulse_api.ai import DisabledModel, LanguageModel
 from pulse_api.auth import ClerkAuthenticator, ClerkIdentity, fetch_clerk_profile
 from pulse_api.config import Settings, get_settings
 from pulse_api.context import RequestContext, TenantContext
 from pulse_api.db import build_session_factory, get_app_engine, session_scope
 from pulse_api.errors import UnauthorizedError
+from pulse_api.reasoning import ReasoningService
 from pulse_api.services import (
     ActionService,
     AttentionService,
@@ -105,6 +107,22 @@ def get_attention_service(
     session: Session = _session_dep,
 ) -> AttentionService:
     return AttentionService(session, tenant)
+
+
+def get_language_model() -> LanguageModel:
+    return DisabledModel()
+
+
+_model_dep = Depends(get_language_model)
+
+
+def get_reasoning_service(
+    tenant: TenantContext = _tenant_dep,
+    session: Session = _session_dep,
+    settings: Settings = _settings_dep,
+    model: LanguageModel = _model_dep,
+) -> ReasoningService:
+    return ReasoningService(session, tenant, model, settings.ai_daily_budget)
 
 
 def get_action_service(

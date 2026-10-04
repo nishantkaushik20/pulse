@@ -9,6 +9,8 @@ Migrations:
 - `0003_gmail` creates `gmail_connections`, `message_threads`, and `messages`.
 - `0004_attention` adds the unique attention-item source index.
 - `0005_context` adds attention resolution metadata and a derived exact-email match.
+- `0006_ai` creates `ai_runs` for model name, token estimates, latency, and status. It does not store prompts or message bodies.
+- `0007_execution` expands action status, adds an idempotency key, and creates `audit_logs`.
 
 Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The ORM also assigns UUIDs on the client so tests can use SQLite.
 
@@ -42,7 +44,7 @@ Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The 
 
 `attention_items`: `tenant_id`, `type`, `priority` (`LOW`, `MEDIUM`, `HIGH`), `title`, `description`, `status` (`OPEN`, `RESOLVED`), `entity_type`, `entity_id`, `due_at`, `resolved_at`, `resolved_by`, `dismiss_reason` (`not_relevant`, `done`, or `waiting`), `matched_customer_id`, `match_method` (`exact_email`), timestamps. Indexed by `(tenant_id, status)`. Unique `(tenant_id, type, entity_type, entity_id)`. `entity_id` is not a foreign key. `matched_customer_id` references `customers` with `ON DELETE SET NULL` because the match is derived. `resolved_by` references `users`. Rows with a null entity are not collapsed by that unique index, because SQL treats those nulls as distinct. The `email_review` rule uses the unique key so one message produces one attention item. Public `POST /attention-items` and `POST /business-events` do not create rows. Resolving an item updates `status` to `RESOLVED` and keeps the row. It does not insert another item and does not change the unique key.
 
-`actions`: `tenant_id`, `action_type`, `status` (`PENDING`, `COMPLETED`, `CANCELLED`), `requested_by`, `entity_type`, `entity_id`, `input`, `result`, `created_at`, `completed_at`. `input` and `result` are JSONB. Indexed by `(tenant_id, status)`. `entity_id` is not a foreign key. This table records an action request. It does not execute one.
+`actions`: `tenant_id`, `action_type`, `status` (`PROPOSED`, `PENDING_APPROVAL`, `APPROVED`, `EXECUTING`, `COMPLETED`, `FAILED`, `CANCELLED`, `EXPIRED`), `idempotency_key`, `requested_by`, `entity_type`, `entity_id`, `input`, `result`, `created_at`, `completed_at`. `input` and `result` are JSONB. Indexed by `(tenant_id, status)`. Unique `(tenant_id, idempotency_key)` when the key is present. `entity_id` is not a foreign key. Low-risk execution is limited to an internal reminder and an approved stored draft.
 
 `action_approvals`: `tenant_id`, `action_id`, `approved_by`, `status` (`APPROVED` or `REJECTED`), `approved_at`, `created_at`. Indexed by `tenant_id` and `action_id`. `tenant_id` is stored on the approval so a query cannot omit tenant scope by joining through another table.
 

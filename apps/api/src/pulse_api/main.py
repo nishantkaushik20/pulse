@@ -2,8 +2,10 @@
 
 import logging
 import os
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +21,7 @@ from pulse_api.logging import configure_logging
 from pulse_api.routes import customer_router, identity_router, operations_router
 
 logger = logging.getLogger(__name__)
+_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @asynccontextmanager
@@ -52,10 +55,13 @@ def create_app() -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        request_id = _request_id(request.headers.get("x-request-id"))
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
         logger.info(
             "request completed",
             extra={
+                "request_id": request_id,
                 "http_method": request.method,
                 "http_path": request.url.path,
                 "http_status": response.status_code,
@@ -64,6 +70,12 @@ def create_app() -> FastAPI:
         return response
 
     return app
+
+
+def _request_id(header: str | None) -> str:
+    if header and _REQUEST_ID.fullmatch(header):
+        return header
+    return str(uuid4())
 
 
 def _web_origin() -> str:

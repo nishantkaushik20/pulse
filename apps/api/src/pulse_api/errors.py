@@ -33,3 +33,8 @@ class ConflictError(DomainError):
 class UnavailableError(DomainError):
     status_code = 503
     detail = "service unavailable"
+
+
+class RateLimitedError(DomainError):
+    status_code = 429
+    detail = "rate limit exceeded"

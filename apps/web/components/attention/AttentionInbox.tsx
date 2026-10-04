@@ -9,6 +9,7 @@ import {
   AttentionHttpError,
   dismissAttention,
   loadAttention,
+  loadBriefing,
   resolveAttention,
   withoutItem,
 } from "@/lib/attention";
@@ -220,11 +221,12 @@ async function refresh(
       return;
     }
     const items = await loadAttention(apiBaseUrl(), token);
+    const briefing = await loadBriefing(apiBaseUrl(), token);
     setState({
       status: "ready",
       workspace,
       pending: false,
-      attention: { status: "ready", items, notice: null },
+      attention: { status: "ready", items, briefing, notice: null },
     });
   } catch (error) {
     if (isUnauthorized(error)) {
@@ -348,6 +350,7 @@ async function runDismiss(
         attention: {
           status: "ready",
           items: withoutItem(current.attention.items, id),
+          briefing: withoutItem(current.attention.briefing ?? [], id),
           notice: null,
         },
       };
@@ -390,6 +393,7 @@ async function runResolve(
         attention: {
           status: "ready",
           items: withoutItem(current.attention.items, id),
+          briefing: withoutItem(current.attention.briefing ?? [], id),
           notice: null,
         },
       };

@@ -86,7 +86,8 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - `GET /tenant/members` and `POST /tenant/members` list members and add one. Adding a member requires `OWNER`.
 - Customers: `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}`.
 - Contacts: `GET/POST /customers/{id}/contacts`, `GET/PATCH/DELETE /contacts/{id}`.
-- Attention inbox: `GET /attention` returns at most 50 `OPEN` items for the current tenant. Order is priority `HIGH`, then `MEDIUM`, then `LOW`, then newer `created_at`, then `id`. `POST /attention/{id}/resolve` sets `RESOLVED`.
+- Attention inbox: `GET /attention` returns at most 50 `OPEN` items for the current tenant. Order is priority `HIGH`, then `MEDIUM`, then `LOW`, then newer `created_at`, then `id`. `POST /attention/{id}/resolve` sets `RESOLVED`. `POST /attention/{id}/dismiss` sets `RESOLVED` and a reason of `not_relevant`, `done`, or `waiting`.
+- Daily briefing: `GET /briefing` returns at most 5 open items. Due items and items older than two days sort ahead of fresh mail. There is no model score and no outbound delivery.
 - Attention items: `GET/POST /attention-items`, `GET /attention-items/{id}`. This list is unchanged and is not the inbox.
 - Business events: `GET/POST /business-events`, `GET /business-events/{id}`.
 - Actions: `GET/POST /actions`, `GET /actions/{id}`.
@@ -94,7 +95,7 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - Gmail: `POST /integrations/gmail/connect`, `GET /integrations/gmail/callback`, `GET /integrations/gmail/connections`, `POST /integrations/gmail/connections/{id}/disconnect`, `POST /integrations/gmail/connections/{id}/sync`.
 - Ingested mail: `GET /messages`, `GET /messages/{id}`, `GET /message-threads`, `GET /message-threads/{id}`.
 
-Created actions are `PENDING`. Created attention items are `OPEN`. Approval does not execute the action.
+Created actions are `PROPOSED`. Created attention items are `OPEN`. Approval of a `store_draft` allows that draft to be stored. It does not send mail. `create_reminder` can run once for an idempotency key and writes an audit row.
 
 `OWNER` can connect and disconnect Gmail. `MEMBER` can read ingested mail and trigger a manual sync. There are no finer Gmail permissions.
 
@@ -116,7 +117,7 @@ Manual sync lists at most 50 inbox messages from the last 7 days (`in:inbox newe
 
 Gmail HTTP lives behind `GmailClient`. Routes do not receive access or refresh tokens. Tests use a fake client. No test calls Google.
 
-Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML.
+Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML. An owner can clear stored bodies and snippets with `POST /integrations/gmail/messages/purge`. Each API response includes `X-Request-ID`. JSON logs include that id and still omit bodies and tokens.
 
 Each new `EMAIL_RECEIVED` event is passed to the Attention Engine in the same transaction, before that message is committed.
 

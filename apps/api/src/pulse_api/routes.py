@@ -1,8 +1,10 @@
 """Minimal REST API for identity and tenant-scoped records."""
 
+from collections.abc import Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse, Response
 
 from pulse_api.deps import (
     get_action_service,
@@ -11,13 +13,17 @@ from pulse_api.deps import (
     get_customer_service,
     get_event_service,
     get_identity_service,
+    get_reasoning_service,
 )
-from pulse_api.errors import ForbiddenError
+from pulse_api.errors import ForbiddenError, UnavailableError
 from pulse_api.models import TenantRole
+from pulse_api.reasoning import ReasoningService
 from pulse_api.schemas import (
     ActionCreate,
+    ActionExecute,
     ActionList,
     ActionOut,
+    AiTextOut,
     ApprovalCreate,
     ApprovalList,
     ApprovalOut,
@@ -54,6 +60,7 @@ from pulse_api.services import (
     ContactService,
     CustomerService,
     IdentityService,
+    InboxRow,
 )
 
 identity_router = APIRouter()
@@ -66,6 +73,7 @@ _contacts = Depends(get_contact_service)
 _events = Depends(get_event_service)
 _attention = Depends(get_attention_service)
 _actions = Depends(get_action_service)
+_reasoning = Depends(get_reasoning_service)
 _limit = Query(default=50, ge=1, le=100)
 _offset = Query(default=0, ge=0, le=10_000)
 
@@ -247,6 +255,16 @@ def read_event(event_id: UUID, service: BusinessEventService = _events) -> Busin
 @operations_router.get("/attention", response_model=AttentionInbox)
 def list_attention_inbox(service: AttentionService = _attention) -> AttentionInbox:
     """Open attention for the authenticated tenant. The tenant is not a parameter."""
+    return _inbox(list(service.list_inbox()))
+
+
+@operations_router.get("/briefing", response_model=AttentionInbox)
+def read_briefing(service: AttentionService = _attention) -> AttentionInbox:
+    """At most five open items. Selection is deterministic and stays on the server."""
+    return _inbox(list(service.list_briefing()))
+
+
+def _inbox(rows: list[InboxRow] | tuple[InboxRow, ...]) -> AttentionInbox:
     return AttentionInbox(
         items=[
             AttentionInboxItem.from_row(
@@ -255,7 +273,7 @@ def list_attention_inbox(service: AttentionService = _attention) -> AttentionInb
                 thread_id=row.thread_id,
                 customer_name=row.customer_name,
             )
-            for row in service.list_inbox()
+            for row in rows
         ]
     )
 
@@ -272,6 +290,30 @@ def dismiss_attention(
     service: AttentionService = _attention,
 ) -> AttentionOut:
     return AttentionOut.from_row(service.dismiss(item_id, body.reason))
+
+
+@operations_router.post("/attention/{item_id}/explain", response_model=AiTextOut)
+def explain_attention(
+    item_id: UUID,
+    service: ReasoningService = _reasoning,
+) -> AiTextOut | JSONResponse:
+    return _ai_text(service.explain, item_id)
+
+
+@operations_router.post("/attention/{item_id}/draft", response_model=AiTextOut)
+def draft_attention(
+    item_id: UUID,
+    service: ReasoningService = _reasoning,
+) -> AiTextOut | JSONResponse:
+    return _ai_text(service.draft, item_id)
+
+
+def _ai_text(call: Callable[[UUID], str], item_id: UUID) -> AiTextOut | JSONResponse:
+    try:
+        text = call(item_id)
+    except UnavailableError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return AiTextOut(text=text)
 
 
 @operations_router.get("/attention-items", response_model=AttentionList)
@@ -323,6 +365,15 @@ def create_action(body: ActionCreate, service: ActionService = _actions) -> Acti
 @operations_router.get("/actions/{action_id}", response_model=ActionOut)
 def read_action(action_id: UUID, service: ActionService = _actions) -> ActionOut:
     return ActionOut.from_row(service.get(action_id))
+
+
+@operations_router.post("/actions/{action_id}/execute", response_model=ActionOut)
+def execute_action(
+    action_id: UUID,
+    body: ActionExecute,
+    service: ActionService = _actions,
+) -> ActionOut:
+    return ActionOut.from_row(service.execute(action_id, body.idempotency_key))
 
 
 @operations_router.get("/actions/{action_id}/approvals", response_model=ApprovalList)
