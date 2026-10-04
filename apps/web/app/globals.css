@@ -67,3 +67,23 @@ button:focus-visible {
   outline: 3px solid #1b1b1b;
   outline-offset: 2px;
 }
+
+input[type="text"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  border: 1px solid #d6d3cd;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.mailbox {
+  margin: 1rem 0 0;
+}
+
+.mailbox button + button {
+  margin-left: 0.5rem;
+}
