@@ -422,6 +422,10 @@ class AttentionDismiss(BaseModel):
     reason: Literal["not_relevant", "done", "waiting"]
 
 
+class AiTextOut(BaseModel):
+    text: str
+
+
 class AttentionInbox(BaseModel):
     items: list[AttentionInboxItem]
 

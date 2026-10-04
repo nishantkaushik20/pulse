@@ -9,6 +9,7 @@ Migrations:
 - `0003_gmail` creates `gmail_connections`, `message_threads`, and `messages`.
 - `0004_attention` adds the unique attention-item source index.
 - `0005_context` adds attention resolution metadata and a derived exact-email match.
+- `0006_ai` creates `ai_runs` for model name, token estimates, latency, and status. It does not store prompts or message bodies.
 
 Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The ORM also assigns UUIDs on the client so tests can use SQLite.
 

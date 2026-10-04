@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
     web_app_url: str = "http://localhost:3000"
+    ai_daily_budget: int = 20
+    ai_model: str = "none"
 
     @field_validator(
         "clerk_issuer",
