@@ -68,7 +68,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mockWorkspace(attention: Response) {
+function mockWorkspace(items: unknown[]) {
   vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/me")) {
@@ -77,8 +77,8 @@ function mockWorkspace(attention: Response) {
     if (url.endsWith("/integrations/gmail/connections")) {
       return Response.json({ items: [connection] });
     }
-    if (url.endsWith("/attention")) {
-      return attention;
+    if (url.endsWith("/briefing") || url.endsWith("/attention")) {
+      return Response.json({ items });
     }
     return new Response(null, { status: 404 });
   });
@@ -128,7 +128,7 @@ describe("attention inbox session", () => {
     session.isLoaded = true;
     session.isSignedIn = true;
     session.getToken.mockResolvedValue("session-token");
-    mockWorkspace(Response.json({ items: [item] }));
+    mockWorkspace([item]);
 
     renderInbox();
     await flush();
@@ -153,10 +153,7 @@ describe("attention inbox session", () => {
       if (url.endsWith("/integrations/gmail/connections")) {
         return Response.json({ items: [connection] });
       }
-      if (url.endsWith("/attention") && init?.method === "POST") {
-        return new Response(null, { status: 200 });
-      }
-      if (url.endsWith("/attention")) {
+      if (url.endsWith("/briefing") || (url.endsWith("/attention") && init?.method !== "POST")) {
         return Response.json({ items: [item] });
       }
       if (url.endsWith("/resolve")) {
@@ -265,7 +262,7 @@ describe("attention inbox session", () => {
     session.isLoaded = true;
     session.isSignedIn = true;
     session.getToken.mockResolvedValue("session-token");
-    mockWorkspace(Response.json({ items: [] }));
+    mockWorkspace([]);
 
     renderInbox();
     await flush();

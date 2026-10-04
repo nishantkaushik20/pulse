@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pulse_api.auth import ClerkIdentity
+from pulse_api.briefing import BRIEFING_CAP, briefing_sort_key
 from pulse_api.context import RequestContext, TenantContext, resolve_current_tenant
 from pulse_api.errors import ConflictError, NotFoundError
 from pulse_api.gmail.repository import MessageRepository
@@ -330,6 +331,13 @@ class AttentionService:
             inbox.append(InboxRow(item=row, source=source, thread_id=thread_id, customer_name=name))
         self._session.flush()
         return inbox
+
+    def list_briefing(self) -> Sequence[InboxRow]:
+        """At most five open items. Priority and age stay deterministic."""
+        rows = list(self.list_inbox())
+        moment = utcnow()
+        rows.sort(key=lambda row: briefing_sort_key(row.item, moment))
+        return rows[:BRIEFING_CAP]
 
     def _refresh_match(self, item: AttentionItem, email: str | None) -> str | None:
         customer_id, method = exact_email_customer(self._session, self._tenant.tenant_id, email)

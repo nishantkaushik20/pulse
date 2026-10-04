@@ -11,7 +11,7 @@ export type AttentionViewState =
   | { status: "signed-out"; configured: boolean }
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; items: AttentionItem[]; notice: string | null };
+  | { status: "ready"; items: AttentionItem[]; notice: string | null; briefing?: AttentionItem[] };
 
 type AttentionViewProps = {
   state: AttentionViewState;
@@ -83,7 +83,7 @@ export function AttentionView({
   return (
     <main className="inbox">
       {mailbox}
-      <AttentionSummary count={state.items.length} />
+      <AttentionSummary count={state.items.length} lines={(state.briefing ?? []).map((item) => item.title)} />
       {state.notice ? <p role="alert">{state.notice}</p> : null}
       <AttentionList items={state.items} now={now} onResolve={onResolve} onDismiss={onDismiss} />
     </main>

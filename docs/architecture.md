@@ -86,7 +86,8 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - `GET /tenant/members` and `POST /tenant/members` list members and add one. Adding a member requires `OWNER`.
 - Customers: `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}`.
 - Contacts: `GET/POST /customers/{id}/contacts`, `GET/PATCH/DELETE /contacts/{id}`.
-- Attention inbox: `GET /attention` returns at most 50 `OPEN` items for the current tenant. Order is priority `HIGH`, then `MEDIUM`, then `LOW`, then newer `created_at`, then `id`. `POST /attention/{id}/resolve` sets `RESOLVED`.
+- Attention inbox: `GET /attention` returns at most 50 `OPEN` items for the current tenant. Order is priority `HIGH`, then `MEDIUM`, then `LOW`, then newer `created_at`, then `id`. `POST /attention/{id}/resolve` sets `RESOLVED`. `POST /attention/{id}/dismiss` sets `RESOLVED` and a reason of `not_relevant`, `done`, or `waiting`.
+- Daily briefing: `GET /briefing` returns at most 5 open items. Due items and items older than two days sort ahead of fresh mail. There is no model score and no outbound delivery.
 - Attention items: `GET/POST /attention-items`, `GET /attention-items/{id}`. This list is unchanged and is not the inbox.
 - Business events: `GET/POST /business-events`, `GET /business-events/{id}`.
 - Actions: `GET/POST /actions`, `GET /actions/{id}`.
