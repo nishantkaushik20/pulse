@@ -102,6 +102,16 @@ def test_email_inbox_returns_sender_and_subject_without_the_body(gmail: GmailApp
     assert "tenant_id" not in listed.text
 
 
+def test_briefing_returns_at_most_five_open_items(domain: DomainApp) -> None:
+    _owner(domain)
+    for index in range(6):
+        record_attention(domain, title=f"Item {index}")
+    listed = domain.client.get("/briefing")
+    assert listed.status_code == 200, listed.text
+    assert len(listed.json()["items"]) == 5
+    assert "body_text" not in listed.text
+
+
 def test_dismiss_hides_the_item_and_keeps_the_row(domain: DomainApp) -> None:
     _owner(domain)
     item_id = record_attention(domain, title="Newsletter")

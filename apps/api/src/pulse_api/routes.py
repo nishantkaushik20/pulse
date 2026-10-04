@@ -54,6 +54,7 @@ from pulse_api.services import (
     ContactService,
     CustomerService,
     IdentityService,
+    InboxRow,
 )
 
 identity_router = APIRouter()
@@ -247,6 +248,16 @@ def read_event(event_id: UUID, service: BusinessEventService = _events) -> Busin
 @operations_router.get("/attention", response_model=AttentionInbox)
 def list_attention_inbox(service: AttentionService = _attention) -> AttentionInbox:
     """Open attention for the authenticated tenant. The tenant is not a parameter."""
+    return _inbox(list(service.list_inbox()))
+
+
+@operations_router.get("/briefing", response_model=AttentionInbox)
+def read_briefing(service: AttentionService = _attention) -> AttentionInbox:
+    """At most five open items. Selection is deterministic and stays on the server."""
+    return _inbox(list(service.list_briefing()))
+
+
+def _inbox(rows: list[InboxRow] | tuple[InboxRow, ...]) -> AttentionInbox:
     return AttentionInbox(
         items=[
             AttentionInboxItem.from_row(
@@ -255,7 +266,7 @@ def list_attention_inbox(service: AttentionService = _attention) -> AttentionInb
                 thread_id=row.thread_id,
                 customer_name=row.customer_name,
             )
-            for row in service.list_inbox()
+            for row in rows
         ]
     )
 
