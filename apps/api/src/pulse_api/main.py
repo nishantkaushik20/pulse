@@ -1,10 +1,12 @@
 """FastAPI application entrypoint."""
 
 import logging
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
@@ -29,6 +31,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Pulse API", version=__version__, lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[_web_origin()],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(customer_router)
@@ -56,6 +64,11 @@ def create_app() -> FastAPI:
         return response
 
     return app
+
+
+def _web_origin() -> str:
+    raw = os.environ.get("WEB_APP_URL", "http://localhost:3000").strip().rstrip("/")
+    return raw or "http://localhost:3000"
 
 
 app = create_app()

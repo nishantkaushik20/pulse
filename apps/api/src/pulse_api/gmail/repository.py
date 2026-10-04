@@ -47,6 +47,13 @@ class MessageThreadRepository(TenantRepository[MessageThread]):
 class MessageRepository(TenantRepository[Message]):
     model = Message
 
+    def get_many(self, message_ids: Sequence[UUID]) -> dict[UUID, Message]:
+        if not message_ids:
+            return {}
+        statement = self._select().where(Message.id.in_(tuple(message_ids)))
+        rows = self._session.scalars(statement).all()
+        return {row.id: row for row in rows}
+
     def list_recent(self, *, limit: int, offset: int) -> Sequence[Message]:
         statement = (
             self._select()

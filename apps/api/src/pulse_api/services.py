@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from pulse_api.auth import ClerkIdentity
 from pulse_api.context import RequestContext, TenantContext, resolve_current_tenant
 from pulse_api.errors import ConflictError, NotFoundError
+from pulse_api.gmail.repository import MessageRepository
 from pulse_api.models import (
     Action,
     ActionApproval,
     ApprovalStatus,
     AttentionItem,
+    AttentionStatus,
     BusinessEvent,
     Contact,
     Customer,
@@ -26,6 +28,7 @@ from pulse_api.models import (
     utcnow,
 )
 from pulse_api.repositories import (
+    INBOX_LIMIT,
     ActionRepository,
     ApprovalRepository,
     AttentionRepository,
@@ -281,9 +284,32 @@ class AttentionService:
     def __init__(self, session: Session, tenant: TenantContext) -> None:
         self._session = session
         self._items = AttentionRepository(session, tenant.tenant_id)
+        self._messages = MessageRepository(session, tenant.tenant_id)
 
     def list(self, *, limit: int, offset: int) -> Sequence[AttentionItem]:
         return self._items.list(limit=limit, offset=offset)
+
+    def list_inbox(self) -> Sequence[tuple[AttentionItem, str | None]]:
+        """Open attention for the current tenant, with a source when a message exists.
+
+        The source is the message's stored provider. The message body is not read.
+        """
+        rows = self._items.list_open(limit=INBOX_LIMIT)
+        message_ids = [
+            row.entity_id
+            for row in rows
+            if row.entity_type == "message" and row.entity_id is not None
+        ]
+        messages = self._messages.get_many(message_ids)
+        inbox = []
+        for row in rows:
+            source = None
+            if row.entity_type == "message" and row.entity_id is not None:
+                message = messages.get(row.entity_id)
+                if message is not None:
+                    source = message.source
+            inbox.append((row, source))
+        return inbox
 
     def create(
         self,
@@ -314,6 +340,15 @@ class AttentionService:
         item = self._items.get(item_id)
         if item is None:
             raise NotFoundError()
+        return item
+
+    def resolve(self, item_id: UUID) -> AttentionItem:
+        """Mark an open item resolved. Resolving again returns the same row."""
+        item = self.get(item_id)
+        if item.status != AttentionStatus.RESOLVED:
+            item.status = AttentionStatus.RESOLVED
+            item.updated_at = utcnow()
+            self._session.flush()
         return item
 
 

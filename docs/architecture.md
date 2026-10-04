@@ -5,7 +5,7 @@ Pulse is a multi-tenant SaaS platform. This document records the identity and do
 ## Applications
 
 - `apps/api` is a Python FastAPI service. Configuration uses Pydantic settings. Persistence uses SQLAlchemy 2 and Alembic against PostgreSQL. Readiness checks Redis. Logs are structured JSON on stdout.
-- `apps/web` is a Next.js TypeScript application. It does not authenticate users yet.
+- `apps/web` is a Next.js TypeScript application. The home screen is the attention inbox. When `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set, Clerk owns the browser session and the inbox sends `Authorization: Bearer <session JWT>` from `getToken()`. The API still validates that JWT. Without those keys the home screen stays on the signed-out state and does not call the inbox.
 - `packages/domain`, `packages/ai`, and `packages/integrations` are reserved and empty.
 - `workers` is reserved and empty. Background workflows are not part of this phase.
 
@@ -86,7 +86,8 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - `GET /tenant/members` and `POST /tenant/members` list members and add one. Adding a member requires `OWNER`.
 - Customers: `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}`.
 - Contacts: `GET/POST /customers/{id}/contacts`, `GET/PATCH/DELETE /contacts/{id}`.
-- Attention items: `GET/POST /attention-items`, `GET /attention-items/{id}`.
+- Attention inbox: `GET /attention` returns at most 50 `OPEN` items for the current tenant. Order is priority `HIGH`, then `MEDIUM`, then `LOW`, then newer `created_at`, then `id`. `POST /attention/{id}/resolve` sets `RESOLVED`.
+- Attention items: `GET/POST /attention-items`, `GET /attention-items/{id}`. This list is unchanged and is not the inbox.
 - Business events: `GET/POST /business-events`, `GET /business-events/{id}`.
 - Actions: `GET/POST /actions`, `GET /actions/{id}`.
 - Approvals: `GET/POST /actions/{id}/approvals`, `GET /actions/{id}/approvals/{approval_id}`.
@@ -137,11 +138,35 @@ The item does not say that a reply is owed. Pulse does not ingest sent mail and 
 
 The same source cannot create a second item. `attention_items` is unique on `(tenant_id, type, entity_type, entity_id)` when those values are present. A repeated Gmail sync inserts no message, no event, and no attention item. Evaluating the same event again inserts nothing.
 
-There is no attention-engine HTTP route. Callers read items through the existing attention API. Creation during sync is synchronous. There is no worker, queue, or polling loop.
+There is no attention-engine HTTP route. Creation during sync is synchronous. There is no worker, queue, or polling loop.
+
+## Attention Inbox
+
+```text
+Attention Inbox
+      ↓
+reads tenant-scoped attention_items
+      ↓
+OPEN items form active work
+      ↓
+RESOLVED items remain persisted
+```
+
+The home screen asks what needs attention. It reads `GET /attention`. The server resolves the tenant from the Clerk session. The request does not accept `tenant_id`. Open items are grouped by the stored priority. Gmail items are `MEDIUM` because that is what the deterministic rule writes. The inbox does not rescore them.
+
+An email card shows the title, the stored sender and subject, and how long ago the item was created. It does not show the message body, HTML, attachments, or recipients. There is no email reader.
+
+`POST /attention/{id}/resolve` moves one item from `OPEN` to `RESOLVED` and leaves the row in place. Resolving it again returns that same row. The active inbox then omits it. A known id from another tenant is a 404.
+
+Stored Gmail identifiers are API message and thread ids. Pulse does not construct a Gmail web URL from them. An Open in Gmail action waits for a later linking enhancement. Gmail scopes are unchanged.
+
+Ranking stays the Phase 4 rule. Semantic prioritization is deferred. Phase 5 does not call an LLM. Pulse is not a Gmail replacement.
+
+The browser allows the configured `WEB_APP_URL` origin to call `GET` and `POST` with an `Authorization` header. The web app reads that token from the Clerk session with `getToken()` and does not store it. Tenant selection stays on the server.
 
 ## Intentionally not implemented
 
-WhatsApp, AI, LLM calls, agents, attention ranking, semantic urgency, automatic replies, Gmail sending, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope. The web app does not call these APIs yet.
+WhatsApp, AI, LLM calls, agents, attention ranking, semantic urgency, automatic replies, Gmail sending, Gmail deep links, Pub/Sub, Gmail watch, polling, incremental `history.list` sync, vector search, embeddings, RAG, attachment download, customer matching, tenant switching, background workers, invoices, payments, CRM pipelines, dashboards, and action execution are out of scope.
 
 ## Constraints
 
