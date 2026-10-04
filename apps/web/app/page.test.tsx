@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import HomePage from "./page";
 
 describe("home page", () => {
-  it("renders the product name and health link", () => {
+  it("asks what needs attention while the inbox loads", () => {
     const html = renderToStaticMarkup(<HomePage />);
 
-    expect(html).toContain("Pulse");
-    expect(html).toContain("/health");
+    expect(html).toContain("What needs your attention?");
+    expect(html).toContain("Checking what needs your attention.");
   });
 });

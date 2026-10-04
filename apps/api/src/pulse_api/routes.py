@@ -21,6 +21,8 @@ from pulse_api.schemas import (
     ApprovalList,
     ApprovalOut,
     AttentionCreate,
+    AttentionInbox,
+    AttentionInboxItem,
     AttentionList,
     AttentionOut,
     BusinessEventCreate,
@@ -244,6 +246,19 @@ def create_event(
 @operations_router.get("/business-events/{event_id}", response_model=BusinessEventOut)
 def read_event(event_id: UUID, service: BusinessEventService = _events) -> BusinessEventOut:
     return BusinessEventOut.from_row(service.get(event_id))
+
+
+@operations_router.get("/attention", response_model=AttentionInbox)
+def list_attention_inbox(service: AttentionService = _attention) -> AttentionInbox:
+    """Open attention for the authenticated tenant. The tenant is not a parameter."""
+    return AttentionInbox(
+        items=[AttentionInboxItem.from_row(row, source) for row, source in service.list_inbox()]
+    )
+
+
+@operations_router.post("/attention/{item_id}/resolve", response_model=AttentionOut)
+def resolve_attention(item_id: UUID, service: AttentionService = _attention) -> AttentionOut:
+    return AttentionOut.from_row(service.resolve(item_id))
 
 
 @operations_router.get("/attention-items", response_model=AttentionList)

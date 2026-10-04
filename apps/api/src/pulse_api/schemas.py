@@ -367,6 +367,38 @@ class AttentionList(BaseModel):
     items: list[AttentionOut]
 
 
+class AttentionInboxItem(BaseModel):
+    id: UUID
+    type: str
+    title: str
+    description: str | None
+    priority: AttentionPriority
+    status: AttentionStatus
+    created_at: datetime
+    source: str | None
+    entity_type: str | None
+    entity_id: UUID | None
+
+    @classmethod
+    def from_row(cls, row: AttentionItem, source: str | None) -> "AttentionInboxItem":
+        return cls(
+            id=row.id,
+            type=row.item_type,
+            title=row.title,
+            description=row.description,
+            priority=AttentionPriority(row.priority),
+            status=AttentionStatus(row.status),
+            created_at=row.created_at,
+            source=source,
+            entity_type=row.entity_type,
+            entity_id=row.entity_id,
+        )
+
+
+class AttentionInbox(BaseModel):
+    items: list[AttentionInboxItem]
+
+
 class ActionCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

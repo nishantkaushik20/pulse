@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from pulse_api.models import (
     Action,
     ActionApproval,
     AttentionItem,
+    AttentionPriority,
     AttentionStatus,
     BusinessEvent,
     Contact,
@@ -24,6 +25,8 @@ from pulse_api.models import (
     User,
     utcnow,
 )
+
+INBOX_LIMIT = 50
 
 _PROTECTED_COLUMNS = frozenset({"id", "tenant_id", "created_at"})
 
@@ -253,6 +256,27 @@ class AttentionRepository(TenantRepository[AttentionItem]):
             .returning(AttentionItem.id)
         )
         return cast(UUID | None, self._session.execute(statement).scalar_one_or_none())
+
+    def list_open(self, *, limit: int = INBOX_LIMIT) -> Sequence[AttentionItem]:
+        """Open items for the inbox.
+
+        Priority is HIGH, then MEDIUM, then LOW. Equal priority is newer first.
+        ``id`` descending breaks remaining ties. Lexical ordering of the priority
+        strings is not used, because that would place LOW ahead of MEDIUM.
+        """
+        rank = case(
+            (AttentionItem.priority == AttentionPriority.HIGH, 3),
+            (AttentionItem.priority == AttentionPriority.MEDIUM, 2),
+            (AttentionItem.priority == AttentionPriority.LOW, 1),
+            else_=0,
+        )
+        statement = (
+            self._select()
+            .where(AttentionItem.status == AttentionStatus.OPEN)
+            .order_by(rank.desc(), AttentionItem.created_at.desc(), AttentionItem.id.desc())
+            .limit(limit)
+        )
+        return cast(Sequence[AttentionItem], self._session.scalars(statement).all())
 
 
 class ActionRepository(TenantRepository[Action]):
