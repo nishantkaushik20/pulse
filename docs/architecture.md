@@ -117,7 +117,7 @@ Manual sync lists at most 50 inbox messages from the last 7 days (`in:inbox newe
 
 Gmail HTTP lives behind `GmailClient`. Routes do not receive access or refresh tokens. Tests use a fake client. No test calls Google.
 
-Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML.
+Plain-text bodies are capped at 32,768 characters. HTML and attachments are ignored. Message bodies are not logged and are not rendered as HTML. An owner can clear stored bodies and snippets with `POST /integrations/gmail/messages/purge`. Each API response includes `X-Request-ID`. JSON logs include that id and still omit bodies and tokens.
 
 Each new `EMAIL_RECEIVED` event is passed to the Attention Engine in the same transaction, before that message is committed.
 

@@ -48,6 +48,10 @@ class GmailSyncOut(BaseModel):
     skipped: int
 
 
+class MessagePurgeOut(BaseModel):
+    cleared: int
+
+
 class MessageThreadOut(BaseModel):
     id: UUID
     source: str

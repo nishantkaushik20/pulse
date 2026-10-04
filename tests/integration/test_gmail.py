@@ -601,3 +601,38 @@ def test_gmail_401_then_invalid_grant_revokes_once(gmail: GmailApp) -> None:
         assert row.status == "REVOKED"
         assert row.encrypted_access_token is None
         assert row.encrypted_refresh_token is None
+
+
+def test_owner_can_purge_message_bodies(gmail: GmailApp) -> None:
+    _bootstrap(gmail, "user_a", "a@example.com", "Ada", "Tenant A")
+    _callback(gmail, _connect(gmail)[0])
+    connection_id = gmail.domain.client.get("/integrations/gmail/connections").json()["items"][0][
+        "id"
+    ]
+    gmail.fake.list_ids = ["msg-inbox"]
+    gmail.fake.messages = {"msg-inbox": _inbox("msg-inbox", plain="SECRET-BODY-TEXT")}
+    synced = gmail.domain.client.post(f"/integrations/gmail/connections/{connection_id}/sync")
+    assert synced.status_code == 200
+    message_id = gmail.domain.client.get("/messages").json()["items"][0]["id"]
+
+    gmail.domain.login("user_m", "m@example.com", "Mo")
+    assert gmail.domain.client.get("/me").status_code == 200
+    member_id = gmail.domain.client.get("/me").json()["user"]["id"]
+    gmail.domain.login("user_a", "a@example.com", "Ada")
+    added = gmail.domain.client.post(
+        "/tenant/members",
+        json={"user_id": member_id, "role": "MEMBER"},
+    )
+    assert added.status_code == 201
+    gmail.domain.login("user_m", "m@example.com", "Mo")
+    denied = gmail.domain.client.post("/integrations/gmail/messages/purge")
+    assert denied.status_code == 403
+
+    gmail.domain.login("user_a", "a@example.com", "Ada")
+    purged = gmail.domain.client.post("/integrations/gmail/messages/purge")
+    assert purged.status_code == 200
+    assert purged.json() == {"cleared": 1}
+    detail = gmail.domain.client.get(f"/messages/{message_id}")
+    assert detail.json()["body_text"] == ""
+    assert detail.json()["snippet"] == ""
+    assert "SECRET-BODY-TEXT" not in detail.text
