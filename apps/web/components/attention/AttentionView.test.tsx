@@ -102,6 +102,20 @@ describe("attention inbox view", () => {
     expect(html).toContain("Try again");
   });
 
+  it("keeps the empty state hidden while the session is loading", () => {
+    const html = renderToStaticMarkup(
+      <AttentionView
+        state={{ status: "auth-loading" }}
+        now={now}
+        onResolve={() => undefined}
+        onRetry={() => undefined}
+      />,
+    );
+    expect(html).toContain("Checking your session.");
+    expect(html).not.toContain("all caught up");
+    expect(html).not.toContain("Pulse could not load");
+  });
+
   it("shows a loading state", () => {
     const html = renderToStaticMarkup(
       <AttentionView

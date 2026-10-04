@@ -55,15 +55,26 @@ export function withoutItem(items: AttentionItem[], id: string): AttentionItem[]
   return items.filter((item) => item.id !== id);
 }
 
+export class AttentionHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super("attention request failed");
+    this.name = "AttentionHttpError";
+    this.status = status;
+  }
+}
+
 export async function loadAttention(
   baseUrl: string,
+  token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<AttentionItem[]> {
   const response = await fetchImpl(`${baseUrl}/attention`, {
-    headers: { Accept: "application/json" },
+    headers: authorizationHeaders(token),
   });
   if (!response.ok) {
-    throw new Error("attention request failed");
+    throw new AttentionHttpError(response.status);
   }
   return parseInbox(await response.json());
 }
@@ -71,15 +82,26 @@ export async function loadAttention(
 export async function resolveAttention(
   baseUrl: string,
   id: string,
+  token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  const response = await fetchImpl(`${baseUrl}/attention/${id}/resolve`, {
+  const response = await fetchImpl(`${baseUrl}/attention/${encodeURIComponent(id)}/resolve`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: authorizationHeaders(token),
   });
   if (!response.ok) {
-    throw new Error("resolve request failed");
+    throw new AttentionHttpError(response.status);
   }
+}
+
+function authorizationHeaders(token: string): { Accept: string; Authorization: string } {
+  if (token.trim() === "" || /[\r\n]/.test(token)) {
+    throw new AttentionHttpError(401);
+  }
+  return {
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 }
 
 function parseInbox(body: unknown): AttentionItem[] {

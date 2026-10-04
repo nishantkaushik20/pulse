@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { AttentionItem } from "@/lib/attention";
 
 import { AttentionEmptyState } from "./AttentionEmptyState";
@@ -5,6 +7,8 @@ import { AttentionList } from "./AttentionList";
 import { AttentionSummary } from "./AttentionSummary";
 
 export type AttentionViewState =
+  | { status: "auth-loading" }
+  | { status: "signed-out"; configured: boolean }
   | { status: "loading" }
   | { status: "error" }
   | { status: "ready"; items: AttentionItem[]; notice: string | null };
@@ -14,9 +18,31 @@ type AttentionViewProps = {
   now: Date;
   onResolve: (id: string) => void;
   onRetry: () => void;
+  signIn?: ReactNode;
 };
 
-export function AttentionView({ state, now, onResolve, onRetry }: AttentionViewProps) {
+export function AttentionView({ state, now, onResolve, onRetry, signIn }: AttentionViewProps) {
+  if (state.status === "auth-loading") {
+    return (
+      <main className="inbox">
+        <h1>What needs your attention?</h1>
+        <p role="status">Checking your session.</p>
+      </main>
+    );
+  }
+  if (state.status === "signed-out") {
+    return (
+      <main className="inbox">
+        <h1>What needs your attention?</h1>
+        <p>
+          {state.configured
+            ? "Sign in to see what needs your attention."
+            : "Sign-in is not configured for this environment."}
+        </p>
+        {state.configured ? signIn : null}
+      </main>
+    );
+  }
   if (state.status === "loading") {
     return (
       <main className="inbox">

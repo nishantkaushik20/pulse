@@ -5,7 +5,7 @@ Pulse is a multi-tenant SaaS platform. This document records the identity and do
 ## Applications
 
 - `apps/api` is a Python FastAPI service. Configuration uses Pydantic settings. Persistence uses SQLAlchemy 2 and Alembic against PostgreSQL. Readiness checks Redis. Logs are structured JSON on stdout.
-- `apps/web` is a Next.js TypeScript application. The home screen is the attention inbox. It does not authenticate users yet, so it calls the API without a Clerk session and shows an error when that call is rejected.
+- `apps/web` is a Next.js TypeScript application. The home screen is the attention inbox. When `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set, Clerk owns the browser session and the inbox sends `Authorization: Bearer <session JWT>` from `getToken()`. The API still validates that JWT. Without those keys the home screen stays on the signed-out state and does not call the inbox.
 - `packages/domain`, `packages/ai`, and `packages/integrations` are reserved and empty.
 - `workers` is reserved and empty. Background workflows are not part of this phase.
 
@@ -162,7 +162,7 @@ Stored Gmail identifiers are API message and thread ids. Pulse does not construc
 
 Ranking stays the Phase 4 rule. Semantic prioritization is deferred. Phase 5 does not call an LLM. Pulse is not a Gmail replacement.
 
-The browser allows the configured `WEB_APP_URL` origin to call `GET` and `POST` with an `Authorization` header. That header is still the Clerk session token. The web app does not collect one.
+The browser allows the configured `WEB_APP_URL` origin to call `GET` and `POST` with an `Authorization` header. The web app reads that token from the Clerk session with `getToken()` and does not store it. Tenant selection stays on the server.
 
 ## Intentionally not implemented
 
