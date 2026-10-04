@@ -95,7 +95,7 @@ SQLAlchemy sessions are not returned to routes and must not be given to a future
 - Gmail: `POST /integrations/gmail/connect`, `GET /integrations/gmail/callback`, `GET /integrations/gmail/connections`, `POST /integrations/gmail/connections/{id}/disconnect`, `POST /integrations/gmail/connections/{id}/sync`.
 - Ingested mail: `GET /messages`, `GET /messages/{id}`, `GET /message-threads`, `GET /message-threads/{id}`.
 
-Created actions are `PENDING`. Created attention items are `OPEN`. Approval does not execute the action.
+Created actions are `PROPOSED`. Created attention items are `OPEN`. Approval of a `store_draft` allows that draft to be stored. It does not send mail. `create_reminder` can run once for an idempotency key and writes an audit row.
 
 `OWNER` can connect and disconnect Gmail. `MEMBER` can read ingested mail and trigger a manual sync. There are no finer Gmail permissions.
 

@@ -20,6 +20,7 @@ from pulse_api.models import TenantRole
 from pulse_api.reasoning import ReasoningService
 from pulse_api.schemas import (
     ActionCreate,
+    ActionExecute,
     ActionList,
     ActionOut,
     AiTextOut,
@@ -364,6 +365,15 @@ def create_action(body: ActionCreate, service: ActionService = _actions) -> Acti
 @operations_router.get("/actions/{action_id}", response_model=ActionOut)
 def read_action(action_id: UUID, service: ActionService = _actions) -> ActionOut:
     return ActionOut.from_row(service.get(action_id))
+
+
+@operations_router.post("/actions/{action_id}/execute", response_model=ActionOut)
+def execute_action(
+    action_id: UUID,
+    body: ActionExecute,
+    service: ActionService = _actions,
+) -> ActionOut:
+    return ActionOut.from_row(service.execute(action_id, body.idempotency_key))
 
 
 @operations_router.get("/actions/{action_id}/approvals", response_model=ApprovalList)

@@ -430,6 +430,12 @@ class AttentionInbox(BaseModel):
     items: list[AttentionInboxItem]
 
 
+class ActionExecute(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    idempotency_key: str = Field(min_length=1, max_length=100)
+
+
 class ActionCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

@@ -92,7 +92,7 @@ def test_tenant_a_cannot_read_tenant_b_records_by_known_id(
         json={"action_type": "send_note", "status": "COMPLETED", "input": {"text": "hidden"}},
     )
     assert action.status_code == 201
-    assert action.json()["status"] == "PENDING"
+    assert action.json()["status"] == "PROPOSED"
     assert action.json()["requested_by"] == owner["user_id"]
     action_id = action.json()["id"]
     approval = domain.client.post(f"/actions/{action_id}/approvals", json={"status": "APPROVED"})

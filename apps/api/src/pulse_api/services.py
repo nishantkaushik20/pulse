@@ -12,15 +12,17 @@ from sqlalchemy.orm import Session
 from pulse_api.auth import ClerkIdentity
 from pulse_api.briefing import BRIEFING_CAP, briefing_sort_key
 from pulse_api.context import RequestContext, TenantContext, resolve_current_tenant
-from pulse_api.errors import ConflictError, NotFoundError
+from pulse_api.errors import ConflictError, ForbiddenError, NotFoundError
 from pulse_api.gmail.repository import MessageRepository
 from pulse_api.matching import EXACT_EMAIL, customer_name, exact_email_customer
 from pulse_api.models import (
     Action,
     ActionApproval,
+    ActionStatus,
     ApprovalStatus,
     AttentionItem,
     AttentionStatus,
+    AuditLog,
     BusinessEvent,
     Contact,
     Customer,
@@ -421,6 +423,8 @@ class AttentionService:
 
 class ActionService:
     def __init__(self, session: Session, tenant: TenantContext) -> None:
+        self._session = session
+        self._tenant = tenant
         self._actions = ActionRepository(session, tenant.tenant_id)
         self._approvals = ApprovalRepository(session, tenant.tenant_id)
         self._user_id = tenant.user_id
@@ -472,3 +476,72 @@ class ActionService:
         if approval is None:
             raise NotFoundError()
         return approval
+
+    def execute(self, action_id: UUID, idempotency_key: str) -> Action:
+        """Run a low-risk action once. The same key returns the completed row."""
+        key = idempotency_key.strip()
+        if not key or len(key) > 100:
+            raise ConflictError("idempotency key is required")
+        existing = self._actions.get_by_idempotency(key)
+        if existing is not None and existing.status == ActionStatus.COMPLETED:
+            return existing
+        if existing is not None and existing.id != action_id:
+            raise ConflictError("idempotency key already used")
+        action = self.get(action_id)
+        if action.status == ActionStatus.COMPLETED:
+            return action
+        if action.action_type not in {"create_reminder", "store_draft"}:
+            raise ForbiddenError("action is not executable")
+        if action.action_type == "store_draft" and not self._approvals.has_approved(action.id):
+            raise ForbiddenError("approval required")
+        action.status = ActionStatus.EXECUTING
+        action.idempotency_key = key
+        self._session.flush()
+        try:
+            result = self._perform(action)
+        except ValueError:
+            action.status = ActionStatus.FAILED
+            action.result = {"error_code": "invalid_input"}
+            self._audit(action, "invalid_input")
+            self._session.flush()
+            return action
+        action.status = ActionStatus.COMPLETED
+        action.result = result
+        action.completed_at = utcnow()
+        self._audit(action, "completed")
+        self._session.flush()
+        return action
+
+    def _perform(self, action: Action) -> dict[str, Any]:
+        if action.action_type == "create_reminder":
+            title = action.input.get("title")
+            raw_due = action.input.get("due_at")
+            if not isinstance(title, str) or not title.strip() or not isinstance(raw_due, str):
+                raise ValueError("invalid_input")
+            item = AttentionService(self._session, self._tenant).create(
+                item_type="reminder",
+                priority="MEDIUM",
+                title=title.strip()[:200],
+                description=None,
+                entity_type=None,
+                entity_id=None,
+                due_at=datetime.fromisoformat(raw_due),
+            )
+            return {"attention_id": str(item.id)}
+        text = action.input.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("invalid_input")
+        return {"draft": text.strip()[:5000]}
+
+    def _audit(self, action: Action, result_code: str) -> None:
+        self._session.add(
+            AuditLog(
+                tenant_id=self._tenant.tenant_id,
+                actor_user_id=self._user_id,
+                action=action.action_type,
+                target_type="action",
+                target_id=action.id,
+                result_code=result_code,
+                metadata_json={"status": action.status},
+            )
+        )
