@@ -233,6 +233,14 @@ class AttentionItem(Base):
             "priority IN ('LOW', 'MEDIUM', 'HIGH')",
             name="ck_attention_items_priority",
         ),
+        CheckConstraint(
+            "dismiss_reason IS NULL OR dismiss_reason IN ('not_relevant', 'done', 'waiting')",
+            name="ck_attention_items_dismiss_reason",
+        ),
+        CheckConstraint(
+            "match_method IS NULL OR match_method IN ('exact_email')",
+            name="ck_attention_items_match_method",
+        ),
         Index("ix_attention_items_tenant_id_status", "tenant_id", "status"),
         Index(
             "uq_attention_items_tenant_type_entity",
@@ -262,6 +270,19 @@ class AttentionItem(Base):
     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     entity_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    dismiss_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    matched_customer_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    match_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,

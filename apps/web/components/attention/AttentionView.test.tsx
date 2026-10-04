@@ -18,6 +18,9 @@ const email: AttentionItem = {
   source: "gmail",
   entity_type: "message",
   entity_id: "message-1",
+  thread_id: null,
+  customer_name: null,
+  match_method: null,
 };
 
 const high: AttentionItem = {

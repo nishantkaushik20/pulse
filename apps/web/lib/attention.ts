@@ -13,6 +13,9 @@ export type AttentionItem = {
   source: string | null;
   entity_type: string | null;
   entity_id: string | null;
+  thread_id: string | null;
+  customer_name: string | null;
+  match_method: string | null;
 };
 
 export type AttentionContext = {
@@ -79,6 +82,23 @@ export async function loadAttention(
   return parseInbox(await response.json());
 }
 
+export async function dismissAttention(
+  baseUrl: string,
+  id: string,
+  reason: "not_relevant" | "done" | "waiting",
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetchImpl(`${baseUrl}/attention/${encodeURIComponent(id)}/dismiss`, {
+    method: "POST",
+    headers: { ...authorizationHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!response.ok) {
+    throw new AttentionHttpError(response.status);
+  }
+}
+
 export async function resolveAttention(
   baseUrl: string,
   id: string,
@@ -134,6 +154,9 @@ function parseItem(value: unknown): AttentionItem {
     source: optionalString(value.source),
     entity_type: optionalString(value.entity_type),
     entity_id: optionalString(value.entity_id),
+    thread_id: optionalString(value.thread_id),
+    customer_name: optionalString(value.customer_name),
+    match_method: optionalString(value.match_method),
   };
 }
 

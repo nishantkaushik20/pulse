@@ -8,6 +8,7 @@ Migrations:
 - `0002_domain` creates the identity and tenant-owned tables below.
 - `0003_gmail` creates `gmail_connections`, `message_threads`, and `messages`.
 - `0004_attention` adds the unique attention-item source index.
+- `0005_context` adds attention resolution metadata and a derived exact-email match.
 
 Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The ORM also assigns UUIDs on the client so tests can use SQLite.
 
@@ -39,7 +40,7 @@ Primary keys are UUIDs. PostgreSQL generates them with `gen_random_uuid()`. The 
 
 `business_events`: `tenant_id`, `event_type`, `entity_type`, `entity_id`, `source`, `occurred_at`, `data`, `created_at`. `data` is JSONB. Indexed by `(tenant_id, occurred_at)`. `entity_id` is not a foreign key.
 
-`attention_items`: `tenant_id`, `type`, `priority` (`LOW`, `MEDIUM`, `HIGH`), `title`, `description`, `status` (`OPEN`, `RESOLVED`), `entity_type`, `entity_id`, `due_at`, timestamps. Indexed by `(tenant_id, status)`. Unique `(tenant_id, type, entity_type, entity_id)`. `entity_id` is not a foreign key. Rows with a null entity are not collapsed by that unique index, because SQL treats those nulls as distinct. The `email_review` rule uses the unique key so one message produces one attention item. Resolving an item updates `status` to `RESOLVED` and keeps the row. It does not insert another item and does not change the unique key.
+`attention_items`: `tenant_id`, `type`, `priority` (`LOW`, `MEDIUM`, `HIGH`), `title`, `description`, `status` (`OPEN`, `RESOLVED`), `entity_type`, `entity_id`, `due_at`, `resolved_at`, `resolved_by`, `dismiss_reason` (`not_relevant`, `done`, or `waiting`), `matched_customer_id`, `match_method` (`exact_email`), timestamps. Indexed by `(tenant_id, status)`. Unique `(tenant_id, type, entity_type, entity_id)`. `entity_id` is not a foreign key. `matched_customer_id` references `customers` with `ON DELETE SET NULL` because the match is derived. `resolved_by` references `users`. Rows with a null entity are not collapsed by that unique index, because SQL treats those nulls as distinct. The `email_review` rule uses the unique key so one message produces one attention item. Public `POST /attention-items` and `POST /business-events` do not create rows. Resolving an item updates `status` to `RESOLVED` and keeps the row. It does not insert another item and does not change the unique key.
 
 `actions`: `tenant_id`, `action_type`, `status` (`PENDING`, `COMPLETED`, `CANCELLED`), `requested_by`, `entity_type`, `entity_id`, `input`, `result`, `created_at`, `completed_at`. `input` and `result` are JSONB. Indexed by `(tenant_id, status)`. `entity_id` is not a foreign key. This table records an action request. It does not execute one.
 

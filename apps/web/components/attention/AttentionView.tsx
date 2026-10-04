@@ -17,12 +17,21 @@ type AttentionViewProps = {
   state: AttentionViewState;
   now: Date;
   onResolve: (id: string) => void;
+  onDismiss?: (id: string, reason: "not_relevant" | "done" | "waiting") => void;
   onRetry: () => void;
   signIn?: ReactNode;
   mailbox?: ReactNode;
 };
 
-export function AttentionView({ state, now, onResolve, onRetry, signIn, mailbox }: AttentionViewProps) {
+export function AttentionView({
+  state,
+  now,
+  onResolve,
+  onDismiss = () => undefined,
+  onRetry,
+  signIn,
+  mailbox,
+}: AttentionViewProps) {
   if (state.status === "auth-loading") {
     return (
       <main className="inbox">
@@ -76,7 +85,7 @@ export function AttentionView({ state, now, onResolve, onRetry, signIn, mailbox 
       {mailbox}
       <AttentionSummary count={state.items.length} />
       {state.notice ? <p role="alert">{state.notice}</p> : null}
-      <AttentionList items={state.items} now={now} onResolve={onResolve} />
+      <AttentionList items={state.items} now={now} onResolve={onResolve} onDismiss={onDismiss} />
     </main>
   );
 }

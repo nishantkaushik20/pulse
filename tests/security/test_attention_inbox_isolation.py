@@ -5,6 +5,7 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 from tests.domain_app import DomainApp
+from tests.records import record_attention
 
 from pulse_api.config import get_settings
 from pulse_api.deps import get_session
@@ -39,23 +40,20 @@ def test_unauthenticated_inbox_and_resolve_are_rejected(
 def test_other_tenant_cannot_list_or_resolve_known_items(domain: DomainApp) -> None:
     domain.login("user_a", "a@example.com", "Ada")
     assert domain.client.post("/tenants", json={"name": "Tenant A"}).status_code == 201
-    created = domain.client.post(
-        "/attention-items",
-        json={"type": "manual", "priority": "HIGH", "title": "Tenant A only"},
-    )
-    assert created.status_code == 201, created.text
-    item_id = created.json()["id"]
+    item_id = record_attention(domain, priority="HIGH", title="Tenant A only", item_type="manual")
 
     domain.login("user_b", "b@example.com", "Bea")
     assert domain.client.post("/tenants", json={"name": "Tenant B"}).status_code == 201
     listed = domain.client.get("/attention")
     hidden = domain.client.post(f"/attention/{item_id}/resolve")
+    dismissed = domain.client.post(f"/attention/{item_id}/dismiss", json={"reason": "done"})
     direct = domain.client.get(f"/attention-items/{item_id}")
 
     assert listed.status_code == 200
     assert listed.json()["items"] == []
     assert "Tenant A only" not in listed.text
     assert hidden.status_code == 404
+    assert dismissed.status_code == 404
     assert direct.status_code == 404
     assert hidden.json()["detail"] == "not found"
     assert item_id not in hidden.text

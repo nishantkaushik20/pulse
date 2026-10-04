@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from tests.domain_app import DomainApp
 from tests.gmail_app import GmailApp
 from tests.integration.test_attention_engine import _connection, _owner, _sync_one
+from tests.records import record_attention
 
 from pulse_api.db import session_scope
 from pulse_api.models import AttentionItem, AttentionStatus
@@ -14,11 +15,11 @@ from pulse_api.models import AttentionItem, AttentionStatus
 
 def test_inbox_orders_open_items_and_hides_resolved(domain: DomainApp) -> None:
     _owner(domain)
-    high = _create(domain, "HIGH", "Confirm the delivery")
-    medium_old = _create(domain, "MEDIUM", "Read the older note")
-    medium_new = _create(domain, "MEDIUM", "Read the newer note")
-    low = _create(domain, "LOW", "File the receipt")
-    resolved = _create(domain, "HIGH", "Already handled")
+    high = record_attention(domain, priority="HIGH", title="Confirm the delivery")
+    medium_old = record_attention(domain, priority="MEDIUM", title="Read the older note")
+    medium_new = record_attention(domain, priority="MEDIUM", title="Read the newer note")
+    low = record_attention(domain, priority="LOW", title="File the receipt")
+    resolved = record_attention(domain, priority="HIGH", title="Already handled")
     _stamp(
         domain,
         {
@@ -48,7 +49,7 @@ def test_inbox_orders_open_items_and_hides_resolved(domain: DomainApp) -> None:
 
 def test_resolve_is_idempotent_and_keeps_the_row(domain: DomainApp) -> None:
     _owner(domain)
-    item_id = _create(domain, "MEDIUM", "New email needs review")
+    item_id = record_attention(domain, title="New email needs review")
 
     first = domain.client.post(
         f"/attention/{item_id}/resolve",
@@ -85,7 +86,9 @@ def test_email_inbox_returns_sender_and_subject_without_the_body(gmail: GmailApp
     assert item["priority"] == "MEDIUM"
     assert item["status"] == "OPEN"
     assert item["source"] == "gmail"
-    assert item["entity_type"] == "message"
+    assert "thread_id" in item
+    assert item["customer_name"] is None
+    assert item["match_method"] is None
     assert "From: Pat <pat@example.com>" in item["description"]
     assert "Subject: Hello subject" in item["description"]
     assert "SECRET-BODY-TEXT" not in listed.text
@@ -99,13 +102,19 @@ def test_email_inbox_returns_sender_and_subject_without_the_body(gmail: GmailApp
     assert "tenant_id" not in listed.text
 
 
-def _create(domain: DomainApp, priority: str, title: str) -> str:
-    created = domain.client.post(
-        "/attention-items",
-        json={"type": "manual", "priority": priority, "title": title},
-    )
-    assert created.status_code == 201, created.text
-    return str(created.json()["id"])
+def test_dismiss_hides_the_item_and_keeps_the_row(domain: DomainApp) -> None:
+    _owner(domain)
+    item_id = record_attention(domain, title="Newsletter")
+    first = domain.client.post(f"/attention/{item_id}/dismiss", json={"reason": "not_relevant"})
+    second = domain.client.post(f"/attention/{item_id}/dismiss", json={"reason": "not_relevant"})
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["dismiss_reason"] == "not_relevant"
+    assert second.json()["id"] == first.json()["id"]
+    assert domain.client.get("/attention").json()["items"] == []
+    stored = domain.client.get(f"/attention-items/{item_id}")
+    assert stored.json()["status"] == AttentionStatus.RESOLVED
+    assert stored.json()["dismiss_reason"] == "not_relevant"
 
 
 def _stamp(domain: DomainApp, moments: dict[str, datetime]) -> None:

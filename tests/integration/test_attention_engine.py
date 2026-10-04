@@ -7,13 +7,14 @@ from sqlalchemy import func, select
 from tests.domain_app import DomainApp
 from tests.gmail_app import GmailApp
 from tests.integration.test_gmail import _bootstrap, _callback, _connect, _inbox
+from tests.records import record_attention
 
 from pulse_api.attention_engine import AttentionEngine
 from pulse_api.context import TenantContext
 from pulse_api.db import session_scope
+from pulse_api.errors import ConflictError
 from pulse_api.models import (
     AttentionItem,
-    AttentionStatus,
     BusinessEvent,
     Message,
     TenantRole,
@@ -100,38 +101,77 @@ def test_failed_attention_insert_rolls_back_the_message_and_event(
         assert session.scalar(select(func.count()).select_from(AttentionItem)) == 0
 
 
-def test_manual_attention_items_without_an_entity_still_create(domain: DomainApp) -> None:
+def test_public_attention_and_event_writes_are_closed(domain: DomainApp) -> None:
     _owner(domain)
-    first = domain.client.post(
+    entity_id = str(uuid4())
+    attention = domain.client.post(
         "/attention-items",
         json={"type": "manual", "title": "Call back", "tenant_id": str(uuid4())},
     )
-    second = domain.client.post(
-        "/attention-items",
-        json={"type": "manual", "title": "Send invoice"},
+    event = domain.client.post(
+        "/business-events",
+        json={
+            "event_type": "EMAIL_RECEIVED",
+            "entity_type": "message",
+            "entity_id": entity_id,
+            "source": "gmail",
+            "data": {},
+        },
     )
-
-    assert first.status_code == 201, first.text
-    assert second.status_code == 201, second.text
-    assert first.json()["status"] == AttentionStatus.OPEN
-    assert "tenant_id" not in first.json()
+    assert attention.status_code == 403
+    assert event.status_code == 403
+    assert domain.client.get("/attention").json()["items"] == []
 
 
-def test_duplicate_manual_source_is_a_conflict(domain: DomainApp) -> None:
+def test_duplicate_service_source_is_a_conflict(domain: DomainApp) -> None:
     _owner(domain)
-    entity_id = str(uuid4())
-    body = {
-        "type": "email_review",
-        "title": "New email needs review",
-        "entity_type": "message",
-        "entity_id": entity_id,
-    }
-    assert domain.client.post("/attention-items", json=body).status_code == 201
-    conflict = domain.client.post("/attention-items", json=body)
-
-    assert conflict.status_code == 409
+    entity_id = uuid4()
+    record_attention(
+        domain,
+        title="New email needs review",
+        item_type="email_review",
+        entity_type="message",
+        entity_id=entity_id,
+    )
+    with pytest.raises(ConflictError):
+        record_attention(
+            domain,
+            title="New email needs review",
+            item_type="email_review",
+            entity_type="message",
+            entity_id=entity_id,
+        )
     listed = domain.client.get("/attention-items")
     assert len(listed.json()["items"]) == 1
+
+
+def test_exact_email_matches_a_customer_and_unknown_senders_stay_unmatched(
+    gmail: GmailApp,
+) -> None:
+    connection_id = _connection(gmail)
+    created = gmail.domain.client.post(
+        "/customers",
+        json={"name": "Pat Co", "email": "Pat@Example.com"},
+    )
+    assert created.status_code == 201, created.text
+    _sync_one(gmail, connection_id)
+    item = gmail.domain.client.get("/attention").json()["items"][0]
+    assert item["customer_name"] == "Pat Co"
+    assert item["match_method"] == "exact_email"
+    assert item["customer_id"] == created.json()["id"]
+    assert "Customer: Pat Co" in item["description"]
+    assert "SECRET-BODY-TEXT" not in gmail.domain.client.get("/attention").text
+    customers = gmail.domain.client.get("/customers").json()["items"]
+    assert len(customers) == 1
+
+
+def test_sync_does_not_invent_a_customer_for_an_unknown_sender(gmail: GmailApp) -> None:
+    connection_id = _connection(gmail)
+    _sync_one(gmail, connection_id)
+    item = gmail.domain.client.get("/attention").json()["items"][0]
+    assert item["customer_name"] is None
+    assert item["match_method"] is None
+    assert gmail.domain.client.get("/customers").json()["items"] == []
 
 
 def _owner(domain: DomainApp) -> str:

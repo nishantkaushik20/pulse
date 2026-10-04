@@ -5,14 +5,16 @@ type AttentionCardProps = {
   item: AttentionItem;
   now: Date;
   onResolve: (id: string) => void;
+  onDismiss: (id: string, reason: "not_relevant" | "done" | "waiting") => void;
 };
 
-export function AttentionCard({ item, now, onResolve }: AttentionCardProps) {
+export function AttentionCard({ item, now, onResolve, onDismiss }: AttentionCardProps) {
   const context = attentionContext(item.description);
   return (
     <article>
       <h3>{item.title}</h3>
       {context.from ? <p>{context.from}</p> : null}
+      {item.customer_name ? <p>Customer: {item.customer_name}</p> : null}
       {context.subject ? <p>{context.subject}</p> : null}
       {context.text ? <p>{context.text}</p> : null}
       <p>
@@ -20,6 +22,9 @@ export function AttentionCard({ item, now, onResolve }: AttentionCardProps) {
       </p>
       <button type="button" onClick={() => onResolve(item.id)}>
         Resolve
+      </button>
+      <button type="button" onClick={() => onDismiss(item.id, "not_relevant")}>
+        Not relevant
       </button>
     </article>
   );
